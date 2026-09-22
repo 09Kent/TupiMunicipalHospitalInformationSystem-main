@@ -1437,8 +1437,33 @@ document.addEventListener('DOMContentLoaded', () => {
       performedBy: `${TMHIS_DATA.currentOfficer.name} (Medical Records Officer)`
     });
 
-    // Log Audit Trail
-    logAudit("Created Patient Record", newId, `${firstName} ${lastName}`, `New patient master file created for ${registrationType}`);
+    // Sync to Supabase via backend API
+    fetch('/records/api/patients', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        FirstName: firstName,
+        LastName: lastName,
+        MiddleName: middleName,
+        DateOfBirth: dob,
+        Gender: gender,
+        ContactNumber: contact,
+        Email: email,
+        Address: address,
+        CivilStatus: civilStatus,
+        BloodType: "O+",
+        PatientCategory: registrationType.includes('Inpatient') ? 'Inpatient' : 'Outpatient'
+      })
+    }).then(res => res.json()).then(resp => {
+      if (resp && resp.patient && resp.patient.PatientID) {
+        newPatient.patient_id = resp.patient.PatientID;
+        newPatient.id = resp.patient.PatientCode;
+      }
+    }).catch(e => console.error('Error saving patient to Supabase:', e));
 
     closeModal('createPatientModal');
     showToast("Record Created", `Patient record ${newId} for ${firstName} ${lastName} created successfully!`, "success");
@@ -1693,6 +1718,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     logAudit("Archived Patient Record", patient.id, `${patient.firstName} ${patient.lastName}`, `Reason: ${reason}`);
 
+    // Sync to Supabase
+    fetch('/records/api/patients/' + (patient.patient_id || patient.id) + '/archive', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ reason: reason })
+    }).catch(e => console.error('Error archiving patient in Supabase:', e));
+
     closeModal('archivePatientModal');
     showToast("Record Archived", `Patient record ${patient.id} moved to Archived status. It remains stored and searchable.`, "info");
     renderCurrentView();
@@ -1791,6 +1827,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     logAudit("Verified Patient Record", patient.id, `${patient.firstName} ${patient.lastName}`, "Certified 7-point verification accuracy");
+
+    // Sync to Supabase
+    fetch('/records/api/patients/' + (patient.patient_id || patient.id) + '/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+        'Accept': 'application/json'
+      }
+    }).catch(e => console.error('Error recording verification in Supabase:', e));
 
     closeModal('verifyRecordModal');
     showToast("Record Verified", `Patient record ${patient.id} marked as VERIFIED.`, "success");
@@ -2108,6 +2154,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     logAudit("Processed Medical Record Request", req.id, `${patientData.firstName} ${patientData.lastName}`, `5-step request processed. Status updated to ${newStatus}. Generated ${summaryId}`);
+
+    // Sync request status to Supabase
+    const reqDbId = (req && req.request_id) ? req.request_id : parseInt(String(req.id).replace(/\D/g, ''), 10) || 1;
+    fetch('/records/api/requests/' + reqDbId + '/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ status: newStatus, remarks: `Processed by MRO wizard - Summary ${summaryId}` })
+    }).catch(e => console.error('Error updating request status in Supabase:', e));
 
     closeModal('processRequestWizardModal');
     showToast("Request Processed", `Request ${req.id} finalized as ${newStatus}. Summary ${summaryId} created!`, "success");

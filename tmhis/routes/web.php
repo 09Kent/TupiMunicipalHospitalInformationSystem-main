@@ -87,6 +87,17 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/records', [RecordsController::class, 'dashboard'])
         ->middleware('role:Records,Admin')
         ->name('records.dashboard');
+    Route::middleware('role:Records,Admin')->prefix('records')->name('records.')->group(function () {
+        Route::get('/api/patients', [RecordsController::class, 'getPatients'])->name('api.patients');
+        Route::post('/api/patients', [RecordsController::class, 'createPatient'])->name('api.patients.create');
+        Route::post('/api/patients/{id}/update', [RecordsController::class, 'updatePatient'])->name('api.patients.update');
+        Route::post('/api/patients/{id}/archive', [RecordsController::class, 'archivePatient'])->name('api.patients.archive');
+        Route::post('/api/patients/{id}/verify', [RecordsController::class, 'verifyPatient'])->name('api.patients.verify');
+        Route::get('/api/requests', [RecordsController::class, 'getRequests'])->name('api.requests');
+        Route::post('/api/requests/{id}/process', [RecordsController::class, 'processRequest'])->name('api.requests.process');
+        Route::get('/api/history/{id}', [RecordsController::class, 'patientHistory'])->name('api.history');
+        Route::get('/summary/{id}', [RecordsController::class, 'summary'])->name('summary');
+    });
     
     // Doctor Consultation
     Route::middleware('role:Doctor,Admin')->prefix('doctor')->name('doctor.')->group(function () {
@@ -99,15 +110,33 @@ Route::middleware(['auth'])->group(function () {
     // Nursing Station
     Route::middleware('role:Nurse,Admin')->prefix('nurse')->name('nurse.')->group(function () {
         Route::get('/', [NurseController::class, 'dashboard'])->name('dashboard');
+        Route::post('/api/vitals', [NurseController::class, 'createVital'])->name('api.vitals.create');
+        Route::post('/api/vitals/{id}/update', [NurseController::class, 'updateVital'])->name('api.vitals.update');
+        Route::post('/api/tasks/create', [NurseController::class, 'createTask'])->name('api.tasks.create');
+        Route::post('/api/tasks/{id}/status', [NurseController::class, 'updateTaskStatus'])->name('api.tasks.status');
+        Route::post('/api/patients/{id}/status', [NurseController::class, 'updatePatientStatus'])->name('api.patients.status');
+        Route::post('/api/queue/{id}/status', [NurseController::class, 'updateQueueStatus'])->name('api.queue.status');
+        Route::post('/api/queue/call', [NurseController::class, 'callNextQueue'])->name('api.queue.call');
         Route::match(['get', 'post'], '/views/{path}', [NurseController::class, 'handleLegacyView'])->where('path', '.*')->name('legacy');
         Route::match(['get', 'post'], '/{page}', [NurseController::class, 'handlePage'])->name('page');
         Route::match(['get', 'post'], '/{page}/{sub}', [NurseController::class, 'handlePage'])->name('page.sub');
     });
+
     
     // Medical Technologist / Laboratory
-    Route::get('/medtech', [MedTechController::class, 'dashboard'])
-        ->middleware('role:MedTech,Admin')
-        ->name('medtech.dashboard');
+    Route::middleware('role:MedTech,Admin')->prefix('medtech')->name('medtech.')->group(function () {
+        Route::get('/', [MedTechController::class, 'dashboard'])->name('dashboard');
+        Route::post('/api/requests/{id}/status', [MedTechController::class, 'updateRequestStatus'])->name('requests.status');
+        Route::post('/api/samples/create', [MedTechController::class, 'createSample'])->name('samples.create');
+        Route::post('/api/samples/{id}/status', [MedTechController::class, 'updateSampleStatus'])->name('samples.status');
+        Route::post('/api/results/create', [MedTechController::class, 'createResult'])->name('results.create');
+        Route::post('/api/results/{id}/update', [MedTechController::class, 'updateResult'])->name('results.update');
+        Route::post('/api/catalog/create', [MedTechController::class, 'createCatalog'])->name('catalog.create');
+        Route::post('/api/catalog/{id}/update', [MedTechController::class, 'updateCatalog'])->name('catalog.update');
+        Route::post('/api/catalog/{id}/toggle', [MedTechController::class, 'toggleCatalog'])->name('catalog.toggle');
+        Route::post('/api/ranges/{id}/update', [MedTechController::class, 'updateRange'])->name('ranges.update');
+        Route::get('/report/{id}/print', [MedTechController::class, 'printReport'])->name('report.print');
+    });
     
     // Pharmacy
     Route::get('/pharmacy', [PharmacyController::class, 'dashboard'])
@@ -186,6 +215,7 @@ $registerAdminApiRoutes = function ($prefix, $as) {
 $registerAdminApiRoutes('admin/api', 'admin.api.');
 $registerAdminApiRoutes('api', 'api.admin.');
 
-// Legacy API aliases for Registration
+// Legacy API aliases for Registration and Clinical
 Route::match(['get', 'post'], '/api/registration/classify.php', [RegisterApiController::class, 'classify']);
 Route::match(['get', 'post'], '/api/registration/submit.php', [RegisterApiController::class, 'submitRegistration']);
+Route::match(['get', 'post'], '/api/vitals.php', [NurseController::class, 'createVital']);

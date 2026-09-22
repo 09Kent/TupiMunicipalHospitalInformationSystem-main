@@ -15,4 +15,14 @@ class LaboratorySample extends Model
     public $timestamps = false;
 
     protected $guarded = [];
+
+    public function patient()
+    {
+        return $this->belongsTo(Patient::class, 'PatientID', 'PatientID');
+    }
+
+    public function request()
+    {
+        return $this->belongsTo(LaboratoryRequest::class, 'RequestID', 'RequestID');
+    }
 }

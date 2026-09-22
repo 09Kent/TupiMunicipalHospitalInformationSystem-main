@@ -16,4 +16,9 @@ class NurseTask extends Model
     const UPDATED_AT = null;
 
     protected $guarded = [];
+
+    public function patient()
+    {
+        return $this->belongsTo(Patient::class, 'PatientID', 'PatientID');
+    }
 }

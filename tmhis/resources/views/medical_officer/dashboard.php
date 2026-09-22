@@ -18,6 +18,7 @@ require_once __DIR__ . '/config/data.php';
   
   <!-- Favicon / Meta -->
   <meta name="description" content="Tupi Municipal Hospital Information Management System - Medical Records Officer Portal">
+  <meta name="csrf-token" content="<?= csrf_token() ?>">
   
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="<?= asset('section/records/css/styles.css') ?>">
@@ -58,10 +59,11 @@ require_once __DIR__ . '/config/data.php';
 
   <!-- Live Server Data -->
   <script>
-    window.SERVER_RECORDS_DATA = <?= json_encode([
-      'currentOfficer' => $currentOfficer ?? [],
-      'patients'       => $_SESSION['hospity_patients'] ?? []
-    ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+    window.SERVER_RECORDS_DATA = <?= json_encode(
+      $serverData ?? [
+        'currentOfficer' => $currentOfficer ?? [],
+        'patients'       => []
+      ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
   </script>
   <!-- App Scripts -->
   <script src="<?= asset('section/records/js/data.js') ?>"></script>

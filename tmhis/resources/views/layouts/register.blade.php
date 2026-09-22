@@ -76,7 +76,7 @@
       </div>
       <div class="flex items-center gap-4 text-slate-400 text-[11px]">
         <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> HIPAA Compliant</span>
-        <span class="flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i> MySQL Connected</span>
+        <span class="flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i> Supabase Connected</span>
         <span class="flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5 text-slate-300"></i> {{ date('D, d M Y') }}</span>
       </div>
     </div>

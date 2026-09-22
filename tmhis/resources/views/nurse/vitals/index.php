@@ -10,8 +10,70 @@ $pageTitle = 'Vital Signs | Nurse Portal • Tupi Municipal Hospital';
 $activeMenu = 'vitals';
 
 $currentUser = Session::getCurrentUser();
-$patients = getDemoPatients();
-$vitalHistory = getDemoVitalHistory();
+
+try {
+    $dbPatients = \App\Models\Patient::orderBy('PatientID', 'asc')->get();
+    $dbVitals = \App\Models\PatientVital::with('patient')->orderBy('CreatedAt', 'desc')->get();
+} catch (\Throwable $e) {
+    $dbPatients = collect();
+    $dbVitals = collect();
+}
+
+$patients = [];
+foreach ($dbPatients as $p) {
+    $recentVital = $dbVitals->where('PatientID', $p->PatientID)->first();
+    $patients[] = [
+        'id' => $p->PatientID,
+        'patient_id' => $p->PatientID,
+        'code' => $p->PatientCode,
+        'name' => $p->FirstName . ' ' . $p->LastName,
+        'age' => $p->Age,
+        'gender' => $p->Gender,
+        'room' => 'Ward ' . (100 + ($p->PatientID % 20)),
+        'category' => $p->PatientCategory ?? 'Outpatient',
+        'bp' => $recentVital ? $recentVital->BloodPressure : '120/80',
+        'heart_rate' => $recentVital ? $recentVital->HeartRate : 75,
+        'temperature' => $recentVital ? $recentVital->Temperature : 36.5,
+        'spo2' => $recentVital ? $recentVital->OxygenSaturation : 98,
+        'resp_rate' => $recentVital ? $recentVital->RespiratoryRate : 18,
+        'respiratory_rate' => $recentVital ? $recentVital->RespiratoryRate : 18,
+        'pain' => $recentVital ? $recentVital->PainScale : 0,
+        'pain_level' => $recentVital ? $recentVital->PainScale : 0,
+        'recorded_by' => $recentVital ? $recentVital->RecordedByName : 'Elena Gomez, RN',
+        'last_updated' => $recentVital ? substr((string)$recentVital->CreatedAt, 0, 16) : substr((string)$p->CreatedAt, 0, 16),
+        'last_update' => $recentVital ? substr((string)$recentVital->CreatedAt, 0, 16) : substr((string)$p->CreatedAt, 0, 16),
+        'condition' => 'Stable',
+        'status' => 'Stable',
+        'attending_physician' => 'Dr. Daniel Lewis, MD'
+    ];
+}
+if (empty($patients)) {
+    $patients = getDemoPatients();
+}
+
+$vitalHistory = [];
+foreach ($dbVitals as $v) {
+    $pt = $v->patient;
+    $vitalHistory[] = [
+        'vital_id' => $v->VitalID,
+        'patient_id' => $v->PatientID,
+        'patient_name' => $pt ? ($pt->FirstName . ' ' . $pt->LastName) : 'Patient #' . $v->PatientID,
+        'date' => substr((string)$v->CreatedAt, 0, 10),
+        'time' => substr((string)$v->CreatedAt, 11, 5),
+        'bp' => $v->BloodPressure,
+        'hr' => $v->HeartRate,
+        'temp' => $v->Temperature,
+        'rr' => $v->RespiratoryRate,
+        'spo2' => $v->OxygenSaturation,
+        'pain' => $v->PainScale,
+        'recorded_by' => $v->RecordedByName,
+        'notes' => $v->ClinicalNotes
+    ];
+}
+if (empty($vitalHistory)) {
+    $vitalHistory = getDemoVitalHistory();
+}
+
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/sidebar.php';
@@ -231,7 +293,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <form class="p-6 space-y-4" onsubmit="handleVitalSubmit(event)">
       <div>
         <label class="text-xs font-bold text-slate-700 block mb-1.5">Select Patient</label>
-        <select id="vitalsPatientSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+        <select id="vitalsPatientSelect" name="patient_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
           <?php foreach ($patients as $p): ?>
             <option value="<?= e($p['id']) ?>"><?= e($p['name']) ?> — <?= e($p['room']) ?></option>
           <?php endforeach; ?>
@@ -239,41 +301,41 @@ require_once __DIR__ . '/../includes/sidebar.php';
       </div>
       <div>
         <label class="text-xs font-bold text-slate-700 block mb-1.5">Date & Time of Assessment</label>
-        <input type="datetime-local" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500" value="<?= date('Y-m-d\TH:i') ?>">
+        <input type="datetime-local" name="assessment_time" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500" value="<?= date('Y-m-d\TH:i') ?>">
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Blood Pressure (mmHg)</label>
-          <input type="text" placeholder="120/80" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="text" name="blood_pressure" placeholder="120/80" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Heart Rate (BPM)</label>
-          <input type="number" placeholder="78" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="number" name="heart_rate" placeholder="78" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Body Temp (°C)</label>
-          <input type="number" step="0.1" placeholder="36.7" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="number" step="0.1" name="temperature" placeholder="36.7" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Respiratory Rate</label>
-          <input type="number" placeholder="18" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="number" name="respiratory_rate" placeholder="18" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Oxygen Saturation (%)</label>
-          <input type="number" placeholder="98" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="number" name="oxygen_saturation" placeholder="98" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-700 block mb-1.5">Pain Score (0–10)</label>
-          <input type="number" min="0" max="10" placeholder="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <input type="number" min="0" max="10" name="pain_scale" placeholder="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
         </div>
       </div>
       <div>
         <label class="text-xs font-bold text-slate-700 block mb-1.5">Nursing Observation & Notes</label>
-        <textarea rows="3" placeholder="Patient rested calmly, lungs clear upon auscultation..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
+        <textarea rows="3" name="clinical_notes" placeholder="Patient rested calmly, lungs clear upon auscultation..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
       </div>
       <div class="flex items-center gap-3 pt-2">
         <button type="button" onclick="closeModal('createVitalModal')" class="flex-1 px-4 py-3 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-sm font-bold transition">Cancel</button>
@@ -417,14 +479,25 @@ async function handleVitalSubmit(e) {
   const form = e.target;
   const fd = new FormData(form);
   try {
-    const res = await fetch('../../api/vitals.php?action=create', { method: 'POST', body: fd });
+    const res = await fetch('/nurse/api/vitals', {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+      }
+    });
     const json = await res.json();
-    alert(json.message || 'Vital signs record successfully submitted and stored.');
-    closeModal('createVitalModal');
-    location.reload();
+    if (json.success) {
+      alert(json.message || 'Vital signs record successfully recorded.');
+      closeModal('createVitalModal');
+      location.reload();
+    } else {
+      alert(json.message || 'Error recording vitals.');
+    }
   } catch (err) {
-    alert('Vital signs record successfully recorded.');
-    closeModal('createVitalModal');
+    console.error(err);
+    alert('Communication error. Please check server logs.');
   }
 }
 </script>

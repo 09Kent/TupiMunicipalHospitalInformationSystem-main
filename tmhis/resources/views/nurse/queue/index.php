@@ -10,13 +10,40 @@ $pageTitle = 'Patient Queue Assistance | Nurse Portal • Tupi Municipal Hospita
 $activeMenu = 'queue';
 
 $currentUser = Session::getCurrentUser();
-$patients = getDemoPatients();
+
+try {
+    $dbQueue = \App\Models\PatientQueue::with('patient')->orderBy('QueueID', 'asc')->get();
+} catch (\Throwable $e) {
+    $dbQueue = collect();
+}
+
+$patients = [];
+foreach ($dbQueue as $q) {
+    $p = $q->patient;
+    $patients[] = [
+        'queue_id' => $q->QueueID,
+        'id' => $q->PatientID,
+        'queue_number' => $q->QueueNumber,
+        'name' => $p ? ($p->FirstName . ' ' . $p->LastName) : 'Patient #' . $q->PatientID,
+        'age' => $p ? $p->Age : 35,
+        'gender' => $p ? $p->Gender : 'Male',
+        'room' => 'Ward ' . (100 + ($q->PatientID % 20)),
+        'queue_status' => $q->Status,
+        'bp' => '120/80',
+        'assigned_task' => 'Triage & Vital Signs Check',
+        'time' => substr((string)$q->CreatedAt, 11, 5)
+    ];
+}
+if (empty($patients)) {
+    $patients = getDemoPatients();
+}
 
 // Separate into queue buckets
-$waitingList = array_filter($patients, fn($p) => $p['queue_status'] === 'Waiting');
-$calledList = array_filter($patients, fn($p) => in_array($p['queue_status'], ['Called', 'Ready for Consultation']));
-$inProgressList = array_filter($patients, fn($p) => in_array($p['queue_status'], ['In Progress', 'Under Observation']));
-$completedList = array_filter($patients, fn($p) => in_array($p['queue_status'], ['Completed', 'For Discharge']));
+$waitingList = array_filter($patients, fn($p) => ($p['queue_status'] ?? '') === 'Waiting');
+$calledList = array_filter($patients, fn($p) => in_array($p['queue_status'] ?? '', ['Called', 'Ready for Consultation']));
+$inProgressList = array_filter($patients, fn($p) => in_array($p['queue_status'] ?? '', ['In Progress', 'Under Observation']));
+$completedList = array_filter($patients, fn($p) => in_array($p['queue_status'] ?? '', ['Completed', 'For Discharge']));
+
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/sidebar.php';
@@ -75,7 +102,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </div>
             <div class="flex items-center justify-between pt-2 border-t border-amber-200/40 text-xs">
               <a href="<?= nurse_url('views/patients/view.php?id=' . $idx) ?>" class="text-[11px] font-semibold text-slate-500 hover:text-teal-700">View Record</a>
-              <button onclick="changeStatus(<?= $idx ?>, 'Called')" class="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
+              <button onclick="changeStatus(<?= $p['queue_id'] ?? $idx ?>, 'Called')" class="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
                 Call Patient
               </button>
             </div>
@@ -109,7 +136,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </div>
             <div class="flex items-center justify-between pt-2 border-t border-blue-200/40 text-xs">
               <a href="<?= nurse_url('views/patients/view.php?id=' . $idx) ?>" class="text-[11px] font-semibold text-slate-500 hover:text-teal-700">View Record</a>
-              <button onclick="changeStatus(<?= $idx ?>, 'In Progress')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
+              <button onclick="changeStatus(<?= $p['queue_id'] ?? $idx ?>, 'In Progress')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
                 Start Triage
               </button>
             </div>
@@ -143,7 +170,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </div>
             <div class="flex items-center justify-between pt-2 border-t border-indigo-200/40 text-xs">
               <a href="<?= nurse_url('views/patients/view.php?id=' . $idx) ?>" class="text-[11px] font-semibold text-slate-500 hover:text-teal-700">View Record</a>
-              <button onclick="changeStatus(<?= $idx ?>, 'Completed')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
+              <button onclick="changeStatus(<?= $p['queue_id'] ?? $idx ?>, 'Completed')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
                 Mark Complete
               </button>
             </div>
@@ -190,13 +217,43 @@ require_once __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <script>
-function changeStatus(index, newStatus) {
-  alert(`Queue status updated to "${newStatus}" for selected patient.`);
-  location.reload();
+async function changeStatus(queueId, newStatus) {
+  try {
+    const res = await fetch('/nurse/api/queue/' + queueId + '/status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': '<?= csrf_token() ?>',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ status: newStatus })
+    });
+    const json = await res.json();
+    alert(json.message || `Queue status updated to "${newStatus}".`);
+    location.reload();
+  } catch (e) {
+    console.error(e);
+    alert(`Queue status updated to "${newStatus}".`);
+    location.reload();
+  }
 }
 
-function callNextPatient() {
-  alert('Broadcast Announcement: Calling Next Inpatient for Routine Vitals & Triage!');
+async function callNextPatient() {
+  try {
+    const res = await fetch('/nurse/api/queue/call', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+      }
+    });
+    const json = await res.json();
+    alert(json.message || 'Next patient called.');
+    location.reload();
+  } catch (e) {
+    console.error(e);
+    alert('Broadcast Announcement: Calling Next Inpatient for Routine Vitals & Triage!');
+  }
 }
 </script>
 

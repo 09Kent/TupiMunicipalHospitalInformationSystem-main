@@ -16,4 +16,19 @@ class PatientQueue extends Model
     const UPDATED_AT = null;
 
     protected $guarded = [];
+
+    public function patient()
+    {
+        return $this->belongsTo(Patient::class, 'PatientID', 'PatientID');
+    }
+
+    public function getStatusAttribute()
+    {
+        return $this->attributes['QueueStatus'] ?? ($this->attributes['Status'] ?? 'Waiting');
+    }
+
+    public function setStatusAttribute($value)
+    {
+        $this->attributes['QueueStatus'] = $value;
+    }
 }

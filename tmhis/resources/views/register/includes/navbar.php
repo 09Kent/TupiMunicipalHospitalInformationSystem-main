@@ -19,7 +19,7 @@ $user = Session::getCurrentUser() ?: [
     </div>
     <div class="flex items-center gap-4 text-slate-400 text-[11px]">
       <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> HIPAA Compliant</span>
-      <span class="flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i> MySQL Connected</span>
+      <span class="flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i> Supabase Connected</span>
       <span class="flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5 text-slate-300"></i> <?= date('D, d M Y') ?></span>
     </div>
   </div>
@@ -115,7 +115,7 @@ $user = Session::getCurrentUser() ?: [
             <div class="text-[10px] font-semibold text-blue-600 leading-tight"><?= e($user['role']) ?></div>
           </div>
 
-          <a href="<?= base_url('views/auth/login.php?logout=1') ?>" 
+          <a href="/logout" 
              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition ml-1" 
              title="Log Out">
             <i data-lucide="log-out" class="w-4 h-4"></i>

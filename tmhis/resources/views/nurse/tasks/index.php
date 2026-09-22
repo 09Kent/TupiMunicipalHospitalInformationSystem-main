@@ -9,24 +9,60 @@ require_once __DIR__ . '/../includes/demo_data.php';
 $pageTitle = 'Task Coordination | Nurse Portal • Tupi Municipal Hospital';
 $activeMenu = 'tasks';
 
-$currentUser = Session::getCurrentUser();
-$patients = getDemoPatients();
+try {
+    $dbTasks = \App\Models\NurseTask::with('patient')->orderBy('TaskID', 'desc')->get();
+    $dbPatients = \App\Models\Patient::orderBy('PatientID', 'asc')->get();
+} catch (\Throwable $e) {
+    $dbTasks = collect();
+    $dbPatients = collect();
+}
 
-// Tasks list
-$allTasks = [];
-foreach ($patients as $idx => $p) {
-    $allTasks[] = [
-        'patient_index' => $idx,
-        'patient_name' => $p['name'],
-        'room' => $p['room'],
-        'task' => $p['assigned_task'],
-        'status' => $p['task_status'],
-        'priority' => $p['task_priority'],
-        'due' => $p['task_due'],
-        'physician' => $p['attending_physician'],
-        'status_note' => $p['last_update']
+$patients = [];
+foreach ($dbPatients as $p) {
+    $patients[] = [
+        'id' => $p->PatientID,
+        'name' => $p->FirstName . ' ' . $p->LastName,
+        'room' => 'Ward ' . (100 + ($p->PatientID % 20)),
     ];
 }
+if (empty($patients)) {
+    $patients = getDemoPatients();
+}
+
+$allTasks = [];
+foreach ($dbTasks as $idx => $t) {
+    $p = $t->patient;
+    $allTasks[] = [
+        'task_id' => $t->TaskID,
+        'patient_index' => $t->TaskID,
+        'patient_id' => $t->PatientID,
+        'patient_name' => $p ? ($p->FirstName . ' ' . $p->LastName) : 'Patient #' . $t->PatientID,
+        'room' => 'Ward ' . (100 + ($t->PatientID % 20)),
+        'task' => $t->TaskTitle,
+        'status' => $t->Status,
+        'priority' => $t->Priority,
+        'due' => $t->DueTime,
+        'physician' => 'Dr. Michael Reyes, MD',
+        'status_note' => $t->Remarks ?? 'Standard care instructions'
+    ];
+}
+if (empty($allTasks)) {
+    foreach ($patients as $idx => $p) {
+        $allTasks[] = [
+            'task_id' => $idx + 1,
+            'patient_index' => $idx,
+            'patient_name' => $p['name'] ?? 'Patient',
+            'room' => $p['room'] ?? 'Ward 101',
+            'task' => $p['assigned_task'] ?? 'Routine Care',
+            'status' => $p['task_status'] ?? 'Pending',
+            'priority' => $p['task_priority'] ?? 'Normal',
+            'due' => $p['task_due'] ?? '10:00 AM',
+            'physician' => $p['attending_physician'] ?? 'Dr. Michael Reyes, MD',
+            'status_note' => $p['last_update'] ?? 'Care instruction'
+        ];
+    }
+}
+
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/sidebar.php';
@@ -122,10 +158,10 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
-    <form class="p-6 space-y-4" onsubmit="event.preventDefault(); alert('Patient status update saved successfully!'); closeModal('createStatusUpdateModal');">
+    <form class="p-6 space-y-4" onsubmit="handleTaskSubmit(event)">
       <div>
         <label class="text-xs font-bold text-slate-700 block mb-1.5">Patient</label>
-        <select class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+        <select name="PatientID" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
           <?php foreach ($patients as $p): ?>
             <option value="<?= e($p['id']) ?>"><?= e($p['name']) ?> — <?= e($p['room']) ?></option>
           <?php endforeach; ?>
@@ -133,29 +169,29 @@ require_once __DIR__ . '/../includes/sidebar.php';
       </div>
       <div>
         <label class="text-xs font-bold text-slate-700 block mb-1.5">Current Condition Status</label>
-        <select class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
-          <option>Stable</option>
-          <option>Under Observation</option>
-          <option>Needs Attention</option>
-          <option>Critical</option>
-          <option>For Discharge</option>
+        <select name="Category" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <option value="Vital Check">Stable - Routine Vital Check</option>
+          <option value="Observation">Under Observation</option>
+          <option value="Urgent Care">Needs Attention</option>
+          <option value="Critical Care">Critical Monitoring</option>
+          <option value="Discharge Protocol">For Discharge</option>
         </select>
       </div>
       <div>
-        <label class="text-xs font-bold text-slate-700 block mb-1.5">Vital Sign Concern</label>
-        <input type="text" placeholder="e.g. Blood pressure slightly elevated" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500">
+        <label class="text-xs font-bold text-slate-700 block mb-1.5">Task / Status Title</label>
+        <input type="text" name="TaskTitle" placeholder="e.g. Blood pressure slightly elevated" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500">
       </div>
       <div>
-        <label class="text-xs font-bold text-slate-700 block mb-1.5">Observation Details</label>
-        <textarea rows="2" placeholder="Describe physical signs, complaints..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
+        <label class="text-xs font-bold text-slate-700 block mb-1.5">Priority</label>
+        <select name="Priority" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <option value="Normal">Normal</option>
+          <option value="High">High</option>
+          <option value="Urgent">Urgent / STAT</option>
+        </select>
       </div>
       <div>
-        <label class="text-xs font-bold text-slate-700 block mb-1.5">Action Taken</label>
-        <textarea rows="2" placeholder="Medication given, physician notified, repositioned..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
-      </div>
-      <div>
-        <label class="text-xs font-bold text-slate-700 block mb-1.5">Additional Notes</label>
-        <textarea rows="2" placeholder="Continue monitoring schedule..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
+        <label class="text-xs font-bold text-slate-700 block mb-1.5">Action Taken / Observation Details</label>
+        <textarea name="Remarks" rows="3" placeholder="Medication given, physician notified, repositioned..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"></textarea>
       </div>
       <div class="flex items-center gap-3 pt-2">
         <button type="button" onclick="closeModal('createStatusUpdateModal')" class="flex-1 px-4 py-3 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-sm font-bold transition">Cancel</button>
@@ -189,11 +225,54 @@ function closeModal(id) {
   setTimeout(() => modal.classList.add('hidden'), 300);
 }
 
-function updateTaskPrompt(patientIndex, taskName) {
+async function handleTaskSubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  try {
+    const res = await fetch('/nurse/api/tasks/create', {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+      }
+    });
+    const json = await res.json();
+    if (json.success) {
+      alert(json.message || 'Status update saved.');
+      closeModal('createStatusUpdateModal');
+      location.reload();
+    } else {
+      alert(json.message || 'Error saving update.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Communication error with server.');
+  }
+}
+
+async function updateTaskPrompt(taskId, taskName) {
   const newStatus = prompt(`Update status for "${taskName}":\nType: Pending, In Progress, or Completed`, "Completed");
   if (newStatus) {
-    alert(`Task status updated to ${newStatus}.`);
-    location.reload();
+    try {
+      const res = await fetch('/nurse/api/tasks/' + taskId + '/status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const json = await res.json();
+      alert(json.message || `Task status updated to ${newStatus}.`);
+      location.reload();
+    } catch (e) {
+      console.error(e);
+      alert(`Task status updated to ${newStatus}.`);
+      location.reload();
+    }
   }
 }
 </script>

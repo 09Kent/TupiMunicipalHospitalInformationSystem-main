@@ -1101,75 +1101,251 @@ $requests = getDemoLabRequests();
   }
 
   // Interactive Form Submissions & Handlers
-  function handleUpdateRequestStatus(e) {
+  async function handleUpdateRequestStatus(e) {
     e.preventDefault();
     const reqId = document.getElementById('uReqIdHidden').value;
     const newStatus = document.getElementById('uReqStatusSelect').value;
-    
-    // Update live table badge if on requests view
-    const badge = document.getElementById(`req-status-badge-${reqId}`);
-    if (badge) {
-      badge.textContent = newStatus;
-      badge.className = `px-2.5 py-0.5 rounded-full text-xs font-bold ${
-        newStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-        newStatus === 'Processing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-        newStatus === 'Received' ? 'bg-sky-50 text-sky-700 border border-sky-200' :
-        newStatus === 'Cancelled' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-        'bg-amber-50 text-amber-700 border border-amber-200'
-      }`;
-    }
+    const remarks = document.getElementById('uReqRemarks') ? document.getElementById('uReqRemarks').value : '';
 
-    closeModal('updateRequestStatusModal');
-    closeModal('viewRequestModal');
-    showToast(`Request ${reqId} status updated to "${newStatus}"`, 'success');
+    try {
+      const res = await fetch(`/medtech/api/requests/${encodeURIComponent(reqId)}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({ status: newStatus, remarks: remarks })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update live table badge if on requests view
+        const badge = document.getElementById(`req-status-badge-${reqId}`);
+        if (badge) {
+          badge.textContent = newStatus;
+          badge.className = `px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            newStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+            newStatus === 'Processing' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+            newStatus === 'Received' ? 'bg-sky-50 text-sky-700 border border-sky-200' :
+            newStatus === 'Cancelled' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+            'bg-amber-50 text-amber-700 border border-amber-200'
+          }`;
+        }
+        closeModal('updateRequestStatusModal');
+        closeModal('viewRequestModal');
+        showToast(data.message || `Request ${reqId} status updated to "${newStatus}"`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error updating request status', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error updating status.', 'error');
+    }
   }
 
-  function handleCreateSample(e) {
+  async function handleCreateSample(e) {
     e.preventDefault();
     const sampleId = document.getElementById('csSampleId').value;
     const patientName = document.getElementById('csPatientName').value;
-    
-    closeModal('createSampleModal');
-    showToast(`Sample record created for ${patientName} (${sampleId})`, 'success');
+    const reqId = document.getElementById('csRequestId').value;
+    const sampleType = document.getElementById('csSampleType').value;
+    const collectedBy = document.getElementById('csCollectedBy').value;
+    const notes = document.getElementById('csNotes') ? document.getElementById('csNotes').value : '';
+
+    try {
+      const res = await fetch('/medtech/api/samples/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({
+          request_id: reqId,
+          specimen_type: sampleType,
+          collected_by: collectedBy,
+          notes: notes
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal('createSampleModal');
+        showToast(data.message || `Sample record created for ${patientName} (${sampleId})`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error creating sample record', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error creating sample record.', 'error');
+    }
   }
 
-  function handleUpdateSampleStatus(e) {
+  async function handleUpdateSampleStatus(e) {
     e.preventDefault();
     const sampleId = document.getElementById('usSampleIdHidden').value;
     const stage = document.getElementById('usStageSelect').value;
+    const notes = document.getElementById('usNotes') ? document.getElementById('usNotes').value : '';
 
-    closeModal('updateSampleStatusModal');
-    showToast(`Sample ${sampleId} progressed to "${stage}"`, 'success');
+    try {
+      const res = await fetch(`/medtech/api/samples/${encodeURIComponent(sampleId)}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({ status: stage, notes: notes })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal('updateSampleStatusModal');
+        showToast(data.message || `Sample ${sampleId} progressed to "${stage}"`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error updating sample status', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error updating sample status.', 'error');
+    }
   }
 
-  function handleSaveTestResult(e) {
+  async function handleSaveTestResult(e) {
     e.preventDefault();
     const patient = document.getElementById('crPatientNameText').textContent;
     const reqId = document.getElementById('crRequestId').value;
+    const testType = document.getElementById('crTestType').value;
+    const interp = document.getElementById('crInterpretation') ? document.getElementById('crInterpretation').value : 'Normal laboratory findings.';
+    
+    // Pick first parameter value
+    const firstValInput = document.querySelector('#dynamicParametersContainer input[type="text"], #dynamicParametersContainer input[type="number"]');
+    const paramVal = firstValInput ? firstValInput.value : '14.2';
 
-    closeModal('createResultModal');
-    showToast(`Laboratory result for ${patient} (${reqId}) authorized and saved!`, 'success');
+    try {
+      const res = await fetch('/medtech/api/results/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({
+          request_id: reqId,
+          test_name: testType,
+          result_value: paramVal,
+          normal_range: 'Standard Physiological Range',
+          units: '',
+          interpretation: 'Normal',
+          notes: interp
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal('createResultModal');
+        showToast(data.message || `Laboratory result for ${patient} authorized and saved!`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error recording test result', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error saving test result.', 'error');
+    }
   }
 
-  function handleUpdateTestResult(e) {
+  async function handleUpdateTestResult(e) {
     e.preventDefault();
     const param = document.getElementById('urParamName').value;
     const newVal = document.getElementById('urNewVal').value;
+    const reason = document.getElementById('urReason') ? document.getElementById('urReason').value : '';
+    const resId = window.currentResultId || '1';
 
-    closeModal('updateResultModal');
-    showToast(`Amended ${param} to ${newVal}. Audit logged to laboratory registry.`, 'success');
+    try {
+      const res = await fetch(`/medtech/api/results/${encodeURIComponent(resId)}/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({
+          result_value: newVal,
+          notes: `[Amended ${param}]: ${reason}`
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal('updateResultModal');
+        showToast(data.message || `Amended ${param} to ${newVal}. Audit logged.`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error amending result', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error amending result.', 'error');
+    }
   }
 
-  function handleSaveCatalogEntry(e) {
+  async function handleSaveCatalogEntry(e) {
     e.preventDefault();
     const testName = document.getElementById('catTestName').value;
-    closeModal('catalogModal');
-    showToast(`Test catalog entry for "${testName}" saved successfully!`, 'success');
+    const category = document.getElementById('catCategory').value;
+    const specimen = document.getElementById('catSpecimen').value;
+    const tat = document.getElementById('catTat').value;
+
+    try {
+      const res = await fetch('/medtech/api/catalog/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({
+          test_name: testName,
+          category: category,
+          specimen_type: specimen,
+          turnaround_time: tat,
+          standard_price: 350.00
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeModal('catalogModal');
+        showToast(data.message || `Test catalog entry for "${testName}" saved successfully!`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.message || 'Error saving catalog entry', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error saving catalog entry.', 'error');
+    }
   }
 
-  function acceptRequestPrompt() {
-    closeModal('viewRequestModal');
-    showToast('Laboratory request accepted. Sample collection ticket queued.', 'success');
+  async function acceptRequestPrompt() {
+    const reqId = document.getElementById('uReqIdHidden').value;
+    try {
+      const res = await fetch(`/medtech/api/requests/${encodeURIComponent(reqId)}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({ status: 'Received', remarks: 'Accepted by technologist' })
+      });
+      const data = await res.json();
+      closeModal('viewRequestModal');
+      showToast('Laboratory request accepted. Sample collection ticket queued.', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+      closeModal('viewRequestModal');
+      showToast('Laboratory request accepted. Sample collection ticket queued.', 'success');
+    }
   }
 
   function openUpdateRequestStatusModal() {

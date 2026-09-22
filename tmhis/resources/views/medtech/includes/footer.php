@@ -338,8 +338,8 @@
     }
 
     // Trigger Print for Laboratory Report
-    function triggerPrintLabReport() {
-      window.print();
+    function triggerPrintLabReport(reportId = 1) {
+      window.open(`/medtech/report/${reportId}/print`, '_blank');
     }
   </script>
   <script src="../includes/paginator.js"></script>
