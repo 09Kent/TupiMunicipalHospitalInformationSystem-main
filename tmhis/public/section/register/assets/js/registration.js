@@ -1246,22 +1246,43 @@ async function selectDoctorAndSubmit(doctorId) {
       consultationType: regState.consultationType
     };
 
-    const res = await fetch(window.SERVER_DATA?.apiEndpoints?.submit || '/api/registration/submit.php', {
+    const endpoint = window.SERVER_DATA?.apiEndpoints?.submit || '/api/register/submit';
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify(payload)
     });
 
-    const data = await res.json();
-    if (data.success) {
+    let data;
+    const responseText = await res.text();
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error("Non-JSON response received from server:", responseText);
+      throw new Error(`Server returned invalid response (HTTP ${res.status}).`);
+    }
+
+    if (res.ok && data.success) {
       regState.createdRecord = data;
       goToRegStep(8);
     } else {
-      alert("Registration error: " + (data.message || "Unknown error"));
+      let errMsg = data.message || (data.errors ? Object.values(data.errors).join(', ') : `Registration failed with status ${res.status}.`);
+      if (data.duplicate_warning) {
+        if (confirm(`${errMsg}\n\nDo you wish to proceed and force registration for this patient?`)) {
+          payload.force_registration = true;
+          payload.allow_duplicate = true;
+          return await selectDoctorAndSubmit(doctorId);
+        }
+      } else {
+        alert("Registration Error: " + errMsg);
+      }
     }
   } catch (e) {
     console.error("Submission failed:", e);
-    alert("Connection error while registering patient.");
+    alert("Error registering patient: " + (e.message || "Network or connection failure."));
   }
 }
 

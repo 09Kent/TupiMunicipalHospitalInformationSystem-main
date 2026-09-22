@@ -380,4 +380,21 @@ class MedTechController extends Controller
 
         return view('medtech.report_print', compact('result', 'patient', 'request'));
     }
+
+    private function logAudit(Request $request, string $action, string $details, ?string $recordId = null): void
+    {
+        try {
+            SystemAuditLog::create([
+                'UserID' => Auth::id() ?? 1,
+                'Action' => $action,
+                'Details' => $details . ($recordId ? " [Record ID: {$recordId}]" : ''),
+                'IPAddress' => $request->ip(),
+                'UserAgent' => $request->userAgent(),
+                'CreatedAt' => now()
+            ]);
+        } catch (\Throwable $e) {
+            // Non-blocking audit failure
+        }
+    }
 }
+

@@ -28,7 +28,7 @@ class AppServiceProvider extends ServiceProvider
                 || isset($_SERVER['VERCEL']) 
                 || str_contains($host, 'vercel.app') 
                 || str_contains($host, 'onrender.com') 
-                || ($request && $request->header('x-forwarded-proto') === 'https');
+                || ($request && ($request->header('x-forwarded-proto') === 'https' || $request->server('HTTP_X_FORWARDED_PROTO') === 'https' || $request->isSecure()));
 
             if ($isProductionOrServerless) {
                 URL::forceScheme('https');

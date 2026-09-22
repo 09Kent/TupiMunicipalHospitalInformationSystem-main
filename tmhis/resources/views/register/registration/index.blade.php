@@ -66,12 +66,12 @@
     bodyLocations: <?= json_encode($dbLocations ?? []) ?>,
     doctors: <?= json_encode($dbDoctors ?? []) ?>,
     apiEndpoints: {
-      classify: '{{ url("/api/register/classify") }}',
-      submit: '{{ url("/api/register/submit") }}',
-      doctors: '{{ url("/api/register/doctors") }}',
-      symptoms: '{{ url("/api/register/symptoms") }}'
+      classify: '/api/register/classify',
+      submit: '/api/register/submit',
+      doctors: '/api/register/doctors',
+      symptoms: '/api/register/symptoms'
     },
-    baseUrl: '{{ url("/") }}/'
+    baseUrl: '/'
   };
 </script>
 

@@ -71,6 +71,35 @@ class Consultation
             $stmtDoc = $this->db->prepare("UPDATE doctors SET Status = 'Available' WHERE DoctorID = :docId");
             $stmtDoc->execute([':docId' => $doctorId]);
 
+            // Ensure consultation note exists in central database
+            $stmtCheckNote = $this->db->prepare("SELECT NoteID FROM consultation_notes WHERE AppointmentID = :appId LIMIT 1");
+            $stmtCheckNote->execute([':appId' => $appointmentId]);
+            if (!$stmtCheckNote->fetchColumn()) {
+                $stmtPat = $this->db->prepare("SELECT PatientID FROM appointments WHERE AppointmentID = :appId LIMIT 1");
+                $stmtPat->execute([':appId' => $appointmentId]);
+                $patientId = (int)$stmtPat->fetchColumn();
+
+                if ($patientId > 0) {
+                    $noteText = $summaryNotes ?: 'Clinical consultation completed and archived.';
+                    $stmtInsNote = $this->db->prepare("
+                        INSERT INTO consultation_notes (
+                            PatientID, DoctorID, AppointmentID, Subjective, Objective,
+                            Assessment, Plan, ClinicalNotes, CreatedAt
+                        ) VALUES (
+                            :pid, :doc_id, :aid, 'General Consultation', 'Clinical examination conducted',
+                            'Consultation completed', :plan, :notes, NOW()
+                        )
+                    ");
+                    $stmtInsNote->execute([
+                        ':pid'    => $patientId,
+                        ':doc_id' => $doctorId,
+                        ':aid'    => $appointmentId,
+                        ':plan'   => $noteText,
+                        ':notes'  => $noteText
+                    ]);
+                }
+            }
+
             $this->db->commit();
             return true;
         } catch (Exception $e) {

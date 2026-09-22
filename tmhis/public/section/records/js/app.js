@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verificationFilter: 'all',
     requestFilter: 'all',
     requestPriorityFilter: 'all',
-    selectedPatientId: 'P-2026-001',
+    selectedPatientId: (TMHIS_DATA?.patients && TMHIS_DATA.patients.length > 0) ? TMHIS_DATA.patients[0].id : 'P-2026-001',
     selectedHistoryTab: 'overview',
     
     // Wizard State for Request Processing
@@ -58,6 +58,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) {
       lucide.createIcons();
     }
+  }
+
+  // Helper: Match record to patient across various identifier formats
+  function matchesPatient(item, patient) {
+    if (!item || !patient) return false;
+    const pCode = patient.id;
+    const pNum = patient.patient_id || (typeof patient.id === 'string' && patient.id.match(/\d+$/) ? parseInt(patient.id.match(/\d+$/)[0], 10) : null);
+    if (item.patientId && (item.patientId === pCode || (patient.code && item.patientId === patient.code))) return true;
+    if (item.patient_id && pNum && item.patient_id == pNum) return true;
+    if (item.patientId && pNum && item.patientId == pNum) return true;
+    if (item.patientId && pCode && item.patientId.replace(/^P-/, 'PAT-') === pCode.replace(/^P-/, 'PAT-')) return true;
+    return false;
   }
 
   // Toast Notification Generator
@@ -699,8 +711,53 @@ document.addEventListener('DOMContentLoaded', () => {
     pageTitle.textContent = "PATIENT MEDICAL HISTORY";
     pageSubtitle.textContent = "View Patient Medical, Consultation, Laboratory & Treatment History";
 
-    const patient = state.patients.find(p => p.id === state.selectedPatientId) || state.patients[0];
-    const medHistory = TMHIS_DATA.patientMedicalHistories[patient.id] || {
+    const patient = state.patients.find(p => p.id === state.selectedPatientId || p.patient_id == state.selectedPatientId || (p.code && p.code === state.selectedPatientId)) || state.patients[0];
+    if (!patient) {
+      contentContainer.innerHTML = '<div class="panel"><div class="panel-body" style="padding:2rem;text-align:center;color:var(--text-muted);">No patient record selected.</div></div>';
+      return;
+    }
+
+    // Async fetch live history from server if not already loaded for this patient
+    if (!patient._historyLoaded) {
+      patient._historyLoaded = true;
+      const historyUrl = `/records/api/history/${encodeURIComponent(patient.id || patient.patient_id)}`;
+      fetch(historyUrl, {
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(res => {
+        if (res.success) {
+          let updated = false;
+          if (Array.isArray(res.consultations) && res.consultations.length > 0) {
+            res.consultations.forEach(nc => {
+              const idx = state.consultations.findIndex(c => c.id === nc.id || (nc.note_id && c.note_id === nc.note_id));
+              if (idx >= 0) state.consultations[idx] = nc;
+              else { state.consultations.unshift(nc); updated = true; }
+            });
+          }
+          if (Array.isArray(res.laboratories) && res.laboratories.length > 0) {
+            res.laboratories.forEach(nl => {
+              const idx = state.laboratories.findIndex(l => l.id === nl.id || (nl.result_id && l.result_id === nl.result_id));
+              if (idx >= 0) state.laboratories[idx] = nl;
+              else { state.laboratories.unshift(nl); updated = true; }
+            });
+          }
+          if (Array.isArray(res.treatments) && res.treatments.length > 0) {
+            res.treatments.forEach(nt => {
+              const idx = state.treatments.findIndex(t => t.id === nt.id || (nt.plan_id && t.plan_id === nt.plan_id));
+              if (idx >= 0) state.treatments[idx] = nt;
+              else { state.treatments.unshift(nt); updated = true; }
+            });
+          }
+          if (updated && (state.currentView === 'history' || state.currentView === 'patient-history')) {
+            renderPatientHistory();
+          }
+        }
+      })
+      .catch(err => console.warn('Could not fetch remote patient history:', err));
+    }
+
+    const medHistory = (TMHIS_DATA.patientMedicalHistories && TMHIS_DATA.patientMedicalHistories[patient.id]) || {
       conditions: [
         { condition: "Seasonal Allergic Rhinitis", diagnosedDate: "2024-05-10", diagnosedBy: "Dr. Roberto De Leon, FPCP", status: "Active" }
       ],
@@ -719,9 +776,38 @@ document.addEventListener('DOMContentLoaded', () => {
       ]
     };
 
-    const patientConsultations = state.consultations.filter(c => c.patientId === patient.id);
-    const patientLabs = state.laboratories.filter(l => l.patientId === patient.id);
-    const patientTreatments = state.treatments.filter(t => t.patientId === patient.id);
+    const patientConsultations = state.consultations.filter(c => matchesPatient(c, patient));
+    const patientLabs = state.laboratories.filter(l => matchesPatient(l, patient));
+    const patientTreatments = state.treatments.filter(t => matchesPatient(t, patient));
+
+    // Synthesize timeline entries from real consultations and labs
+    const timelineItems = [...(medHistory.timeline || [])];
+    patientConsultations.forEach(c => {
+      const cTitle = c.chiefComplaint ? `Consultation: ${c.chiefComplaint}` : "Outpatient Consultation";
+      if (!timelineItems.some(t => t.date === c.date && (t.title === cTitle || t.type === 'Consultation'))) {
+        timelineItems.unshift({
+          date: c.date,
+          type: "Consultation",
+          title: cTitle,
+          practitioner: c.doctor,
+          desc: `Diagnosis: ${c.diagnosis || 'Clinical Impression Evaluated'}. Plan: ${c.treatment || 'Formulated'}`
+        });
+      }
+    });
+    patientLabs.forEach(l => {
+      const lTitle = `Lab Test: ${l.testName}`;
+      if (!timelineItems.some(t => t.date === l.date && t.title === lTitle)) {
+        timelineItems.unshift({
+          date: l.date,
+          type: "Laboratory",
+          title: lTitle,
+          practitioner: l.requestingDoctor || "Attending Physician",
+          desc: `Result Status: ${l.resultStatus}. Performed by ${l.medTech || 'MedTech'}`
+        });
+      }
+    });
+    timelineItems.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    medHistory.timeline = timelineItems;
 
     contentContainer.innerHTML = `
       <!-- Patient Selector & Header Profile -->
@@ -2515,11 +2601,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.previewSummaryDocument = (summaryId) => {
     const summary = state.summaries.find(s => s.summaryId === summaryId) || state.summaries[0];
-    const patient = state.patients.find(p => p.id === summary.patientId) || state.patients[0];
-    const medHistory = TMHIS_DATA.patientMedicalHistories[patient.id] || TMHIS_DATA.patientMedicalHistories["P-2026-001"];
-    const patientConsultations = state.consultations.filter(c => c.patientId === patient.id);
-    const patientLabs = state.laboratories.filter(l => l.patientId === patient.id);
-    const patientTreatments = state.treatments.filter(t => t.patientId === patient.id);
+    const patient = state.patients.find(p => p.id === summary.patientId || p.patient_id == summary.patientId) || state.patients[0];
+    const medHistory = (TMHIS_DATA.patientMedicalHistories && TMHIS_DATA.patientMedicalHistories[patient.id]) || TMHIS_DATA.patientMedicalHistories["P-2026-001"];
+    const patientConsultations = state.consultations.filter(c => matchesPatient(c, patient));
+    const patientLabs = state.laboratories.filter(l => matchesPatient(l, patient));
+    const patientTreatments = state.treatments.filter(t => matchesPatient(t, patient));
 
     const modal = document.getElementById('previewSummaryModal');
     const content = document.getElementById('previewSummaryModalContent');
@@ -2700,11 +2786,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.printSummaryDocument = (summaryId) => {
     const summary = state.summaries.find(s => s.summaryId === summaryId) || state.summaries[0];
-    const patient = state.patients.find(p => p.id === summary.patientId) || state.patients[0];
-    const medHistory = TMHIS_DATA.patientMedicalHistories[patient.id] || TMHIS_DATA.patientMedicalHistories["P-2026-001"];
-    const patientConsultations = state.consultations.filter(c => c.patientId === patient.id);
-    const patientLabs = state.laboratories.filter(l => l.patientId === patient.id);
-    const patientTreatments = state.treatments.filter(t => t.patientId === patient.id);
+    const patient = state.patients.find(p => p.id === summary.patientId || p.patient_id == summary.patientId) || state.patients[0];
+    const medHistory = (TMHIS_DATA.patientMedicalHistories && TMHIS_DATA.patientMedicalHistories[patient.id]) || TMHIS_DATA.patientMedicalHistories["P-2026-001"];
+    const patientConsultations = state.consultations.filter(c => matchesPatient(c, patient));
+    const patientLabs = state.laboratories.filter(l => matchesPatient(l, patient));
+    const patientTreatments = state.treatments.filter(t => matchesPatient(t, patient));
 
     // Populate dedicated print container
     const printContainer = document.getElementById('printSummaryContainer');

@@ -52,7 +52,17 @@ class Appointment
         $appTime  = $data['AppointmentTime'] ?? '02:30 PM';
 
         if ($doctorId && $this->checkConflict($doctorId, $appDate, $appTime)) {
-            throw new Exception("Physician scheduling conflict: Doctor #{$doctorId} already has an active appointment on {$appDate} at {$appTime}.");
+            // Auto-advance slot to next available 15-minute interval
+            $dt = DateTime::createFromFormat('h:i A', $appTime) ?: new DateTime('14:30');
+            $attempts = 0;
+            while ($attempts < 24 && $this->checkConflict($doctorId, $appDate, $dt->format('h:i A'))) {
+                $dt->modify('+15 minutes');
+                $attempts++;
+            }
+            if ($this->checkConflict($doctorId, $appDate, $dt->format('h:i A'))) {
+                throw new Exception("Physician scheduling conflict: Doctor #{$doctorId} has no available slots remaining on {$appDate}.");
+            }
+            $appTime = $dt->format('h:i A');
         }
 
         $stmt = $this->db->prepare("

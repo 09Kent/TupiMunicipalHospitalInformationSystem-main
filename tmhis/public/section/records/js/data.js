@@ -1600,15 +1600,25 @@ const TMHIS_DATA = (function() {
   const base = RAW_TMHIS_DATA;
   if (typeof window !== 'undefined' && window.SERVER_RECORDS_DATA) {
     const server = window.SERVER_RECORDS_DATA;
+    const serverConsultations = Array.isArray(server.consultations) ? server.consultations : [];
+    const serverLabs = Array.isArray(server.laboratoryHistory) ? server.laboratoryHistory : [];
+    const serverTreatments = Array.isArray(server.treatmentHistory) ? server.treatmentHistory : [];
+
     return {
       ...base,
       ...server,
       currentOfficer: (server.currentOfficer && server.currentOfficer.name) ? server.currentOfficer : base.currentOfficer,
       patients: (server.patients && server.patients.length > 0) ? server.patients : base.patients,
       medicalRecordRequests: (server.medicalRecordRequests && server.medicalRecordRequests.length > 0) ? server.medicalRecordRequests : base.medicalRecordRequests,
-      consultations: (server.consultations && server.consultations.length > 0) ? server.consultations : base.consultations,
-      laboratoryHistory: (server.laboratoryHistory && server.laboratoryHistory.length > 0) ? server.laboratoryHistory : base.laboratoryHistory,
-      treatmentHistory: (server.treatmentHistory && server.treatmentHistory.length > 0) ? server.treatmentHistory : base.treatmentHistory,
+      consultations: serverConsultations.length > 0 
+        ? [...serverConsultations, ...base.consultations.filter(bc => !serverConsultations.some(sc => sc.id === bc.id))]
+        : base.consultations,
+      laboratoryHistory: serverLabs.length > 0
+        ? [...serverLabs, ...base.laboratoryHistory.filter(bl => !serverLabs.some(sl => sl.id === bl.id))]
+        : base.laboratoryHistory,
+      treatmentHistory: serverTreatments.length > 0
+        ? [...serverTreatments, ...base.treatmentHistory.filter(bt => !serverTreatments.some(st => st.id === bt.id))]
+        : base.treatmentHistory,
       recordSummaries: (server.recordSummaries && server.recordSummaries.length > 0) ? server.recordSummaries : base.recordSummaries,
       patientRegistrationHistory: (server.patientRegistrationHistory && server.patientRegistrationHistory.length > 0) ? server.patientRegistrationHistory : base.patientRegistrationHistory,
       auditTrail: (server.auditTrail && server.auditTrail.length > 0) ? server.auditTrail : base.auditTrail,

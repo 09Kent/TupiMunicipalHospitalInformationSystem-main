@@ -34,7 +34,7 @@ class RecordsController extends Controller
         $patientRows = Patient::orderBy('PatientID', 'asc')->get();
         $livePatients = [];
         foreach ($patientRows as $r) {
-            $code = $r->PatientCode ?: ('P-2026-' . str_pad((string)$r->PatientID, 3, '0', STR_PAD_LEFT));
+            $code = $r->PatientCode ?: ('PAT-' . date('Y') . '-' . str_pad((string)$r->PatientID, 4, '0', STR_PAD_LEFT));
             $livePatients[] = [
                 'id'                 => $code,
                 'patient_id'         => (int)$r->PatientID,
@@ -73,7 +73,7 @@ class RecordsController extends Controller
             return [
                 'id' => 'REQ-' . str_pad((string)$req->RequestID, 4, '0', STR_PAD_LEFT),
                 'request_id' => $req->RequestID,
-                'patientId' => $req->patient ? ($req->patient->PatientCode ?: 'P-2026-' . str_pad((string)$req->patient->PatientID, 3, '0', STR_PAD_LEFT)) : 'P-2026-001',
+                'patientId' => $req->patient ? ($req->patient->PatientCode ?: 'PAT-' . date('Y') . '-' . str_pad((string)$req->patient->PatientID, 4, '0', STR_PAD_LEFT)) : 'PAT-2026-0001',
                 'patientName' => $req->patient ? ($req->patient->FirstName . ' ' . $req->patient->LastName) : 'Patient Record',
                 'requestor' => $req->RequestedBy,
                 'relationship' => $req->Relationship,
@@ -87,31 +87,143 @@ class RecordsController extends Controller
             ];
         })->toArray();
 
-        // If requests table is empty, provide sensible default array structure
-        if (empty($requests)) {
-            $requests = [
+        // Fetch live consultations with doctor & specialty details
+        $consultationRows = DB::table('consultation_notes as cn')
+            ->join('patients as p', 'cn.PatientID', '=', 'p.PatientID')
+            ->leftJoin('doctors as d', 'cn.DoctorID', '=', 'd.DoctorID')
+            ->leftJoin('specialties as s', 'd.SpecialtyID', '=', 's.SpecialtyID')
+            ->select(
+                'cn.*',
+                'p.PatientCode',
+                'p.FirstName as PatientFirstName',
+                'p.LastName as PatientLastName',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName',
+                'd.Title as DoctorTitle',
+                'd.Specialty as DoctorSpecialty',
+                's.SpecialtyName'
+            )
+            ->orderBy('cn.CreatedAt', 'desc')
+            ->get();
+
+        $liveConsultations = [];
+        foreach ($consultationRows as $c) {
+            $pCode = $c->PatientCode ?: ('PAT-' . date('Y') . '-' . str_pad((string)$c->PatientID, 4, '0', STR_PAD_LEFT));
+            $docName = 'Dr. ' . trim(($c->DoctorFirstName ?? 'Attending') . ' ' . ($c->DoctorLastName ?? 'Physician'));
+            if (!empty($c->DoctorTitle)) $docName .= ', ' . $c->DoctorTitle;
+
+            $liveConsultations[] = [
+                'id'             => 'CON-2026-' . str_pad((string)$c->NoteID, 3, '0', STR_PAD_LEFT),
+                'note_id'        => (int)$c->NoteID,
+                'patientId'      => $pCode,
+                'patient_id'     => (int)$c->PatientID,
+                'patientName'    => trim($c->PatientFirstName . ' ' . $c->PatientLastName),
+                'date'           => substr((string)$c->CreatedAt, 0, 10),
+                'time'           => date('h:i A', strtotime($c->CreatedAt)),
+                'doctor'         => $docName,
+                'department'     => $c->DoctorSpecialty ?: ($c->SpecialtyName ?: 'Clinical Services'),
+                'chiefComplaint' => $c->Subjective ?: 'Routine Consultation',
+                'vitalSigns'     => is_string($c->VitalSigns) ? $c->VitalSigns : json_encode($c->VitalSigns),
+                'diagnosis'      => $c->Assessment ?: 'Clinical Impression Evaluated',
+                'treatment'      => $c->Plan ?: 'Treatment plan formulated',
+                'status'         => 'Completed',
+                'notes'          => $c->ClinicalNotes ?: ($c->Subjective . ' ' . $c->Assessment)
+            ];
+        }
+
+        // Fetch live laboratory results
+        $labRows = DB::table('laboratory_results as lr')
+            ->join('patients as p', 'lr.PatientID', '=', 'p.PatientID')
+            ->leftJoin('laboratory_requests as req', 'lr.RequestID', '=', 'req.RequestID')
+            ->leftJoin('doctors as d', 'lr.DoctorID', '=', 'd.DoctorID')
+            ->select(
+                'lr.*',
+                'p.PatientCode',
+                'p.FirstName as PatientFirstName',
+                'p.LastName as PatientLastName',
+                'req.TestType as RequestedTestType',
+                'req.Status as RequestStatus',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName'
+            )
+            ->orderBy('lr.CreatedAt', 'desc')
+            ->get();
+
+        $liveLabs = [];
+        foreach ($labRows as $lr) {
+            $pCode = $lr->PatientCode ?: ('PAT-' . date('Y') . '-' . str_pad((string)$lr->PatientID, 4, '0', STR_PAD_LEFT));
+            $docName = $lr->DoctorFirstName ? ('Dr. ' . $lr->DoctorFirstName . ' ' . $lr->DoctorLastName) : 'Attending Physician';
+            $testName = $lr->TestName ?: ($lr->RequestedTestType ?: 'Diagnostic Test');
+            $resultsData = [
                 [
-                    'id' => 'REQ-0001',
-                    'request_id' => 1,
-                    'patientId' => $livePatients[0]['id'] ?? 'P-2026-001',
-                    'patientName' => ($livePatients[0]['firstName'] ?? 'Juan') . ' ' . ($livePatients[0]['lastName'] ?? 'Dela Cruz'),
-                    'requestor' => 'Juan Dela Cruz',
-                    'relationship' => 'Self',
-                    'purpose' => 'PhilHealth Insurance Reimbursement & SSS Sickness Benefit Claim',
-                    'requestedDate' => date('Y-m-d'),
-                    'priority' => 'High',
-                    'status' => 'Pending',
-                    'processedBy' => null,
-                    'processedDate' => null,
-                    'remarks' => 'Urgent for insurance submission'
+                    'parameter' => $testName,
+                    'value'     => ($lr->ResultValue ?? 'Completed') . ($lr->Units ? ' ' . $lr->Units : ''),
+                    'reference' => $lr->NormalRange ?: 'Normal',
+                    'status'    => $lr->Interpretation ?: 'Normal'
                 ]
+            ];
+
+            $liveLabs[] = [
+                'id'               => 'LAB-2026-' . str_pad((string)$lr->ResultID, 4, '0', STR_PAD_LEFT),
+                'result_id'        => (int)$lr->ResultID,
+                'patientId'        => $pCode,
+                'patient_id'       => (int)$lr->PatientID,
+                'patientName'      => trim($lr->PatientFirstName . ' ' . $lr->PatientLastName),
+                'date'             => (string)($lr->ResultDate ?? substr((string)$lr->CreatedAt, 0, 10)),
+                'testName'         => $testName,
+                'requestingDoctor' => $docName,
+                'department'       => 'Clinical Pathology / Laboratory',
+                'resultStatus'     => $lr->RequestStatus ?: ($lr->Interpretation ?: 'Completed'),
+                'reportStatus'     => 'Available',
+                'results'          => $resultsData,
+                'pathologist'      => 'Dr. Corazon Mendoza, FPSP',
+                'medTech'          => 'Registered Medical Technologist'
+            ];
+        }
+
+        // Fetch live treatment plans
+        $treatmentRows = DB::table('treatment_plans as tp')
+            ->join('patients as p', 'tp.PatientID', '=', 'p.PatientID')
+            ->leftJoin('doctors as d', 'tp.DoctorID', '=', 'd.DoctorID')
+            ->select(
+                'tp.*',
+                'p.PatientCode',
+                'p.FirstName as PatientFirstName',
+                'p.LastName as PatientLastName',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName',
+                'd.Specialty as DoctorSpecialty'
+            )
+            ->orderBy('tp.CreatedAt', 'desc')
+            ->get();
+
+        $liveTreatments = [];
+        foreach ($treatmentRows as $tp) {
+            $pCode = $tp->PatientCode ?: ('PAT-' . date('Y') . '-' . str_pad((string)$tp->PatientID, 4, '0', STR_PAD_LEFT));
+            $docName = $tp->DoctorFirstName ? ('Dr. ' . $tp->DoctorFirstName . ' ' . $tp->DoctorLastName) : 'Attending Physician';
+            $liveTreatments[] = [
+                'id'                => 'TRT-2026-' . str_pad((string)$tp->PlanID, 3, '0', STR_PAD_LEFT),
+                'plan_id'           => (int)$tp->PlanID,
+                'patientId'         => $pCode,
+                'patient_id'        => (int)$tp->PatientID,
+                'treatment'         => $tp->Goal ?: 'Clinical Treatment Protocol',
+                'date'              => substr((string)$tp->CreatedAt, 0, 10),
+                'startDate'         => substr((string)$tp->CreatedAt, 0, 10),
+                'doctor'            => $docName,
+                'prescribingDoctor' => $docName,
+                'department'        => $tp->DoctorSpecialty ?: 'Outpatient Department',
+                'notes'             => $tp->Notes ?: ($tp->LifestyleRecommendations . ' ' . $tp->MedicationPlan),
+                'status'            => $tp->Status ?: 'Active'
             ];
         }
 
         $serverData = [
-            'currentOfficer' => $currentOfficer,
-            'patients' => $livePatients,
+            'currentOfficer'        => $currentOfficer,
+            'patients'              => $livePatients,
             'medicalRecordRequests' => $requests,
+            'consultations'         => $liveConsultations,
+            'laboratoryHistory'     => $liveLabs,
+            'treatmentHistory'      => $liveTreatments,
         ];
 
         return view('medical_officer.dashboard', compact('currentOfficer', 'serverData'));
@@ -300,15 +412,140 @@ class RecordsController extends Controller
     {
         $patient = Patient::where('PatientID', $id)
             ->orWhere('PatientCode', $id)
-            ->firstOrFail();
+            ->first();
+
+        if (!$patient && is_string($id) && preg_match('/PAT-\d{4}-(\d+)/', $id, $matches)) {
+            $numId = (int)$matches[1];
+            $patient = Patient::where('PatientID', $numId)->first();
+        }
+
+        if (!$patient) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Patient not found'
+            ], 404);
+        }
 
         $patientId = $patient->PatientID;
+        $pCode = $patient->PatientCode ?: ('PAT-' . date('Y') . '-' . str_pad((string)$patient->PatientID, 4, '0', STR_PAD_LEFT));
 
-        $consultations = ConsultationNote::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
+        $consultationRows = DB::table('consultation_notes as cn')
+            ->leftJoin('doctors as d', 'cn.DoctorID', '=', 'd.DoctorID')
+            ->leftJoin('specialties as s', 'd.SpecialtyID', '=', 's.SpecialtyID')
+            ->where('cn.PatientID', $patientId)
+            ->select(
+                'cn.*',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName',
+                'd.Title as DoctorTitle',
+                'd.Specialty as DoctorSpecialty',
+                's.SpecialtyName'
+            )
+            ->orderBy('cn.CreatedAt', 'desc')
+            ->get();
+
+        $consultations = [];
+        foreach ($consultationRows as $c) {
+            $docName = 'Dr. ' . trim(($c->DoctorFirstName ?? 'Attending') . ' ' . ($c->DoctorLastName ?? 'Physician'));
+            if (!empty($c->DoctorTitle)) $docName .= ', ' . $c->DoctorTitle;
+
+            $consultations[] = [
+                'id'             => 'CON-2026-' . str_pad((string)$c->NoteID, 3, '0', STR_PAD_LEFT),
+                'note_id'        => (int)$c->NoteID,
+                'patientId'      => $pCode,
+                'patient_id'     => (int)$c->PatientID,
+                'patientName'    => trim($patient->FirstName . ' ' . $patient->LastName),
+                'date'           => substr((string)$c->CreatedAt, 0, 10),
+                'time'           => date('h:i A', strtotime($c->CreatedAt)),
+                'doctor'         => $docName,
+                'department'     => $c->DoctorSpecialty ?: ($c->SpecialtyName ?: 'Clinical Services'),
+                'chiefComplaint' => $c->Subjective ?: 'Routine Consultation',
+                'vitalSigns'     => is_string($c->VitalSigns) ? $c->VitalSigns : json_encode($c->VitalSigns),
+                'diagnosis'      => $c->Assessment ?: 'Clinical Impression Evaluated',
+                'treatment'      => $c->Plan ?: 'Treatment plan formulated',
+                'status'         => 'Completed',
+                'notes'          => $c->ClinicalNotes ?: ($c->Subjective . ' ' . $c->Assessment)
+            ];
+        }
+
+        $labRows = DB::table('laboratory_results as lr')
+            ->leftJoin('laboratory_requests as req', 'lr.RequestID', '=', 'req.RequestID')
+            ->leftJoin('doctors as d', 'lr.DoctorID', '=', 'd.DoctorID')
+            ->where('lr.PatientID', $patientId)
+            ->select(
+                'lr.*',
+                'req.TestType as RequestedTestType',
+                'req.Status as RequestStatus',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName'
+            )
+            ->orderBy('lr.CreatedAt', 'desc')
+            ->get();
+
+        $labs = [];
+        foreach ($labRows as $lr) {
+            $docName = $lr->DoctorFirstName ? ('Dr. ' . $lr->DoctorFirstName . ' ' . $lr->DoctorLastName) : 'Attending Physician';
+            $testName = $lr->TestName ?: ($lr->RequestedTestType ?: 'Diagnostic Test');
+            $resultsData = [
+                [
+                    'parameter' => $testName,
+                    'value'     => ($lr->ResultValue ?? 'Completed') . ($lr->Units ? ' ' . $lr->Units : ''),
+                    'reference' => $lr->NormalRange ?: 'Normal',
+                    'status'    => $lr->Interpretation ?: 'Normal'
+                ]
+            ];
+
+            $labs[] = [
+                'id'               => 'LAB-2026-' . str_pad((string)$lr->ResultID, 4, '0', STR_PAD_LEFT),
+                'result_id'        => (int)$lr->ResultID,
+                'patientId'        => $pCode,
+                'patient_id'       => (int)$lr->PatientID,
+                'patientName'      => trim($patient->FirstName . ' ' . $patient->LastName),
+                'date'             => (string)($lr->ResultDate ?? substr((string)$lr->CreatedAt, 0, 10)),
+                'testName'         => $testName,
+                'requestingDoctor' => $docName,
+                'department'       => 'Clinical Pathology / Laboratory',
+                'resultStatus'     => $lr->RequestStatus ?: ($lr->Interpretation ?: 'Completed'),
+                'reportStatus'     => 'Available',
+                'results'          => $resultsData,
+                'pathologist'      => 'Dr. Corazon Mendoza, FPSP',
+                'medTech'          => 'Registered Medical Technologist'
+            ];
+        }
+
+        $treatmentRows = DB::table('treatment_plans as tp')
+            ->leftJoin('doctors as d', 'tp.DoctorID', '=', 'd.DoctorID')
+            ->where('tp.PatientID', $patientId)
+            ->select(
+                'tp.*',
+                'd.FirstName as DoctorFirstName',
+                'd.LastName as DoctorLastName',
+                'd.Specialty as DoctorSpecialty'
+            )
+            ->orderBy('tp.CreatedAt', 'desc')
+            ->get();
+
+        $treatments = [];
+        foreach ($treatmentRows as $tp) {
+            $docName = $tp->DoctorFirstName ? ('Dr. ' . $tp->DoctorFirstName . ' ' . $tp->DoctorLastName) : 'Attending Physician';
+            $treatments[] = [
+                'id'                => 'TRT-2026-' . str_pad((string)$tp->PlanID, 3, '0', STR_PAD_LEFT),
+                'plan_id'           => (int)$tp->PlanID,
+                'patientId'         => $pCode,
+                'patient_id'        => (int)$tp->PatientID,
+                'treatment'         => $tp->Goal ?: 'Clinical Treatment Protocol',
+                'date'              => substr((string)$tp->CreatedAt, 0, 10),
+                'startDate'         => substr((string)$tp->CreatedAt, 0, 10),
+                'doctor'            => $docName,
+                'prescribingDoctor' => $docName,
+                'department'        => $tp->DoctorSpecialty ?: 'Outpatient Department',
+                'notes'             => $tp->Notes ?: ($tp->LifestyleRecommendations . ' ' . $tp->MedicationPlan),
+                'status'            => $tp->Status ?: 'Active'
+            ];
+        }
+
         $diagnoses = Diagnosis::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
-        $treatments = TreatmentPlan::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
         $prescriptions = Prescription::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
-        $labs = LaboratoryResult::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
         $vitals = PatientVital::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();
 
         return response()->json([
@@ -327,7 +564,16 @@ class RecordsController extends Controller
     {
         $patient = Patient::where('PatientID', $id)
             ->orWhere('PatientCode', $id)
-            ->firstOrFail();
+            ->first();
+
+        if (!$patient && is_string($id) && preg_match('/PAT-\d{4}-(\d+)/', $id, $matches)) {
+            $numId = (int)$matches[1];
+            $patient = Patient::where('PatientID', $numId)->first();
+        }
+
+        if (!$patient) {
+            abort(404, 'Patient not found');
+        }
 
         $patientId = $patient->PatientID;
         $consultations = ConsultationNote::where('PatientID', $patientId)->orderBy('CreatedAt', 'desc')->get();

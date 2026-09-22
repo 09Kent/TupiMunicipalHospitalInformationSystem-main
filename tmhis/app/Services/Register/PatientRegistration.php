@@ -178,7 +178,15 @@ class PatientRegistration
 
             $appDate = $data['appointmentDate'] ?? date('Y-m-d');
             $appTime = $data['selectedSlot'] ?? '02:30 PM';
-            $consType = $data['consultationType'] ?? 'In-Person Consultation';
+            $allowedConsultationTypes = [
+                'In-Person Consultation',
+                'Secure Telehealth Video',
+                'Follow-up Review',
+                'Emergency Triage'
+            ];
+            $consType = in_array($data['consultationType'] ?? '', $allowedConsultationTypes)
+                ? $data['consultationType']
+                : 'In-Person Consultation';
 
             $appId = $appointmentModel->create([
                 'PatientID'        => $patientId,
