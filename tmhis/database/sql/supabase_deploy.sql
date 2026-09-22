@@ -714,6 +714,9 @@ CREATE TABLE IF NOT EXISTS "sessions" (
     PRIMARY KEY ("id")
 );
 
+CREATE INDEX IF NOT EXISTS "sessions_user_id_index" ON "sessions" ("user_id");
+CREATE INDEX IF NOT EXISTS "sessions_last_activity_index" ON "sessions" ("last_activity");
+
 CREATE TABLE IF NOT EXISTS "cache" (
     "key" VARCHAR(255) NOT NULL,
     "value" TEXT NOT NULL,

@@ -10,7 +10,7 @@ require_once __DIR__ . '/../models/Doctor.php';
 require_once __DIR__ . '/../models/Diagnosis.php';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 try {
     $diagnosisModel = new Diagnosis();

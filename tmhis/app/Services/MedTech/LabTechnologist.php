@@ -26,13 +26,24 @@ class LabTechnologist
 
     public function recordResult(array $data): int
     {
+        $doctorId = !empty($data['DoctorID']) ? (int)$data['DoctorID'] : null;
+        if (!$doctorId && !empty($data['RequestID'])) {
+            $reqStmt = $this->db->prepare("SELECT DoctorID FROM laboratory_requests WHERE RequestID = :rid LIMIT 1");
+            $reqStmt->execute([':rid' => (int)$data['RequestID']]);
+            $doctorId = (int)$reqStmt->fetchColumn();
+        }
+        if (!$doctorId) {
+            $docStmt = $this->db->query("SELECT DoctorID FROM doctors WHERE Status = 'Active' LIMIT 1");
+            $doctorId = (int)($docStmt ? ($docStmt->fetchColumn() ?: 1) : 1);
+        }
+
         $sql = "INSERT INTO laboratory_results (RequestID, PatientID, DoctorID, TestName, ResultValue, NormalRange, Units, Interpretation, Notes)
                 VALUES (:RequestID, :PatientID, :DoctorID, :TestName, :ResultValue, :NormalRange, :Units, :Interpretation, :Notes)";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
             ':RequestID' => (int)$data['RequestID'],
             ':PatientID' => (int)$data['PatientID'],
-            ':DoctorID' => (int)($data['DoctorID'] ?? 11),
+            ':DoctorID' => $doctorId,
             ':TestName' => $data['TestName'],
             ':ResultValue' => $data['ResultValue'],
             ':NormalRange' => $data['NormalRange'] ?? 'Normal',

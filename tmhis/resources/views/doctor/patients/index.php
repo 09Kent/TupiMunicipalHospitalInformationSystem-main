@@ -12,7 +12,7 @@ $pageTitle = 'Patients Directory | Doctor Portal • Tupi Municipal Hospital';
 $activeMenu = 'patients';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 $specialty = $currentUser['specialty'] ?? 'Cardiologist';
 
 $patientModel = new Patient();

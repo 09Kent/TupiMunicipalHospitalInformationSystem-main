@@ -14,7 +14,7 @@ $pageTitle = 'Medical Certificates & Allergies | Doctor Portal • Tupi Municipa
 $activeMenu = 'certificates';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 $certModel = new MedicalCertificate();
 $allergyModel = new AllergyRecord();

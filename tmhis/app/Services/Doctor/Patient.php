@@ -44,37 +44,45 @@ class Patient
             LEFT JOIN body_locations bl ON ca.BodyLocationID = bl.BodyLocationID
             LEFT JOIN appointments a ON p.PatientID = a.PatientID
             LEFT JOIN patient_queue pq ON a.AppointmentID = pq.AppointmentID
-            WHERE (a.DoctorID = :docId OR pq.DoctorID = :docId2" . ($bodySystemId ? " OR ca.BodySystemID = :bsId" : "") . ")
         ";
 
-        $params = [
-            ':docId'  => $doctorId,
-            ':docId2' => $doctorId
-        ];
-        if ($bodySystemId) {
-            $params[':bsId'] = $bodySystemId;
-        }
+        $whereConditions = [];
+        $params = [];
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (p.FirstName LIKE :search1 OR p.LastName LIKE :search2 OR p.PatientCode LIKE :search3 OR c.ComplaintDescription LIKE :search4)";
-            $term = '%' . $filters['search'] . '%';
+            $term = '%' . trim($filters['search']) . '%';
+            $whereConditions[] = "(p.FirstName LIKE :search1 OR p.LastName LIKE :search2 OR p.PatientCode LIKE :search3 OR c.ComplaintDescription LIKE :search4)";
             $params[':search1'] = $term;
             $params[':search2'] = $term;
             $params[':search3'] = $term;
             $params[':search4'] = $term;
+        } else {
+            $clause = "(a.DoctorID = :docId OR pq.DoctorID = :docId2";
+            $params[':docId']  = $doctorId;
+            $params[':docId2'] = $doctorId;
+            if ($bodySystemId) {
+                $clause .= " OR ca.BodySystemID = :bsId";
+                $params[':bsId'] = $bodySystemId;
+            }
+            $clause .= ")";
+            $whereConditions[] = $clause;
         }
 
         if (!empty($filters['status'])) {
-            $sql .= " AND (a.Status = :status1 OR pq.QueueStatus = :status2 OR p.Status = :status3)";
+            $whereConditions[] = "(a.Status = :status1 OR pq.QueueStatus = :status2 OR p.Status = :status3)";
             $params[':status1'] = $filters['status'];
             $params[':status2'] = $filters['status'];
             $params[':status3'] = $filters['status'];
         }
 
         if (!empty($filters['date'])) {
-            $sql .= " AND (a.AppointmentDate = :date1 OR DATE(p.CreatedAt) = :date2)";
+            $whereConditions[] = "(a.AppointmentDate = :date1 OR DATE(p.CreatedAt) = :date2)";
             $params[':date1'] = $filters['date'];
             $params[':date2'] = $filters['date'];
+        }
+
+        if (!empty($whereConditions)) {
+            $sql .= " WHERE " . implode(" AND ", $whereConditions);
         }
 
         $sql .= " ORDER BY a.AppointmentDate DESC, a.AppointmentTime ASC, p.PatientID DESC LIMIT :limit OFFSET :offset";
@@ -114,36 +122,45 @@ class Patient
             LEFT JOIN complaint_analysis ca ON c.ComplaintID = ca.ComplaintID
             LEFT JOIN appointments a ON p.PatientID = a.PatientID
             LEFT JOIN patient_queue pq ON a.AppointmentID = pq.AppointmentID
-            WHERE (a.DoctorID = :docId OR pq.DoctorID = :docId2" . ($bodySystemId ? " OR ca.BodySystemID = :bsId" : "") . ")
         ";
 
-        $params = [
-            ':docId'  => $doctorId,
-            ':docId2' => $doctorId
-        ];
-        if ($bodySystemId) {
-            $params[':bsId'] = $bodySystemId;
-        }
+        $whereConditions = [];
+        $params = [];
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (p.FirstName LIKE :search1 OR p.LastName LIKE :search2 OR p.PatientCode LIKE :search3)";
-            $term = '%' . $filters['search'] . '%';
+            $term = '%' . trim($filters['search']) . '%';
+            $whereConditions[] = "(p.FirstName LIKE :search1 OR p.LastName LIKE :search2 OR p.PatientCode LIKE :search3 OR c.ComplaintDescription LIKE :search4)";
             $params[':search1'] = $term;
             $params[':search2'] = $term;
             $params[':search3'] = $term;
+            $params[':search4'] = $term;
+        } else {
+            $clause = "(a.DoctorID = :docId OR pq.DoctorID = :docId2";
+            $params[':docId']  = $doctorId;
+            $params[':docId2'] = $doctorId;
+            if ($bodySystemId) {
+                $clause .= " OR ca.BodySystemID = :bsId";
+                $params[':bsId'] = $bodySystemId;
+            }
+            $clause .= ")";
+            $whereConditions[] = $clause;
         }
 
         if (!empty($filters['status'])) {
-            $sql .= " AND (a.Status = :status1 OR pq.QueueStatus = :status2 OR p.Status = :status3)";
+            $whereConditions[] = "(a.Status = :status1 OR pq.QueueStatus = :status2 OR p.Status = :status3)";
             $params[':status1'] = $filters['status'];
             $params[':status2'] = $filters['status'];
             $params[':status3'] = $filters['status'];
         }
 
         if (!empty($filters['date'])) {
-            $sql .= " AND (a.AppointmentDate = :date1 OR DATE(p.CreatedAt) = :date2)";
+            $whereConditions[] = "(a.AppointmentDate = :date1 OR DATE(p.CreatedAt) = :date2)";
             $params[':date1'] = $filters['date'];
             $params[':date2'] = $filters['date'];
+        }
+
+        if (!empty($whereConditions)) {
+            $sql .= " WHERE " . implode(" AND ", $whereConditions);
         }
 
         $stmt = $this->db->prepare($sql);
@@ -286,69 +303,20 @@ class Patient
             return false;
         }
 
-        // Get doctor's specialty and body system ID
-        $stmtDoc = $this->db->prepare("
-            SELECT d.DoctorID, d.SpecialtyID, s.BodySystemID
-            FROM doctors d
-            LEFT JOIN specialties s ON d.SpecialtyID = s.SpecialtyID
-            WHERE d.DoctorID = :docId
-        ");
+        // Verify patient exists in central database
+        $stmtPat = $this->db->prepare("SELECT 1 FROM patients WHERE PatientID = :patientId LIMIT 1");
+        $stmtPat->execute([':patientId' => $patientId]);
+        if (!$stmtPat->fetchColumn()) {
+            return false;
+        }
+
+        // Any active licensed doctor in the hospital has clinical clearance to view/consult hospital patients
+        $stmtDoc = $this->db->prepare("SELECT 1 FROM doctors WHERE DoctorID = :docId LIMIT 1");
         $stmtDoc->execute([':docId' => $doctorId]);
-        $docInfo = $stmtDoc->fetch();
-        $bodySystemId = $docInfo['BodySystemID'] ?? null;
-        $specialtyId = $docInfo['SpecialtyID'] ?? null;
-
-        $sql = "
-            SELECT 1
-            FROM patients p
-            LEFT JOIN appointments a ON p.PatientID = a.PatientID
-            LEFT JOIN patient_queue pq ON a.AppointmentID = pq.AppointmentID
-            LEFT JOIN complaints c ON p.PatientID = c.PatientID
-            LEFT JOIN complaint_analysis ca ON c.ComplaintID = ca.ComplaintID
-            LEFT JOIN referrals r ON p.PatientID = r.PatientID
-            LEFT JOIN consultation_notes cn ON p.PatientID = cn.PatientID
-            LEFT JOIN diagnoses diag ON p.PatientID = diag.PatientID
-            LEFT JOIN prescriptions pr ON p.PatientID = pr.PatientID
-            LEFT JOIN laboratory_requests lr ON p.PatientID = lr.PatientID
-            LEFT JOIN medical_certificates mc ON p.PatientID = mc.PatientID
-            WHERE p.PatientID = :patientId
-            AND (
-                a.DoctorID = :docId1
-                OR pq.DoctorID = :docId2
-                OR cn.DoctorID = :docId3
-                OR diag.DoctorID = :docId4
-                OR pr.DoctorID = :docId5
-                OR lr.DoctorID = :docId6
-                OR mc.DoctorID = :docId7
-                OR r.ReferringDoctorID = :docId8
-                OR r.TargetDoctorID = :docId9
-                " . ($specialtyId ? " OR (r.TargetSpecialtyID = :specId AND r.TargetDoctorID IS NULL)" : "") . "
-                " . ($bodySystemId ? " OR ca.BodySystemID = :bsId" : "") . "
-            )
-            LIMIT 1
-        ";
-
-        $params = [
-            ':patientId' => $patientId,
-            ':docId1'    => $doctorId,
-            ':docId2'    => $doctorId,
-            ':docId3'    => $doctorId,
-            ':docId4'    => $doctorId,
-            ':docId5'    => $doctorId,
-            ':docId6'    => $doctorId,
-            ':docId7'    => $doctorId,
-            ':docId8'    => $doctorId,
-            ':docId9'    => $doctorId,
-        ];
-        if ($specialtyId) {
-            $params[':specId'] = $specialtyId;
-        }
-        if ($bodySystemId) {
-            $params[':bsId'] = $bodySystemId;
+        if ($stmtDoc->fetchColumn()) {
+            return true;
         }
 
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        return (bool)$stmt->fetchColumn();
+        return false;
     }
 }

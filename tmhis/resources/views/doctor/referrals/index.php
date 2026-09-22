@@ -14,7 +14,7 @@ $pageTitle = 'Patient Referrals | Doctor Portal • Tupi Municipal Hospital';
 $activeMenu = 'referrals';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 $specialtyId = $currentUser['specialty_id'] ?? 2;
 
 $refModel = new Referral();

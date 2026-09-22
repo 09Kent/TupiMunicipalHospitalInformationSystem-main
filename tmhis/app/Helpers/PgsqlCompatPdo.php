@@ -22,6 +22,27 @@ if (!class_exists('PgsqlCompatPdo', false)) {
             return parent::exec($statement);
         }
 
+        public function lastInsertId(?string $name = null): string|false
+        {
+            if ($name !== null && $name !== '') {
+                return parent::lastInsertId($name);
+            }
+
+            try {
+                $stmt = parent::query('SELECT lastval()');
+                if ($stmt) {
+                    $val = $stmt->fetchColumn();
+                    if ($val !== false && $val !== null) {
+                        return (string) $val;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Ignore if lastval() is not yet initialized in current session
+            }
+
+            return parent::lastInsertId($name);
+        }
+
         public static function rewriteSql(string $sql): string
         {
             if (self::$pattern === null) {
@@ -334,6 +355,7 @@ if (!class_exists('PgsqlCompatPdo', false)) {
             $sql = preg_replace('/\bDATE_SUB\s*\(\s*(CURDATE\(\)|CURRENT_DATE)\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)/i', "($1 - INTERVAL '$2 DAY')", $sql);
             $sql = preg_replace('/\bDATE_ADD\s*\(\s*(CURDATE\(\)|CURRENT_DATE)\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)/i', "($1 + INTERVAL '$2 DAY')", $sql);
             $sql = preg_replace('/\bCURDATE\(\)/i', 'CURRENT_DATE', $sql);
+            $sql = preg_replace('/\bLAST_INSERT_ID\s*\(\s*\)/i', 'lastval()', $sql);
             
             // MySQL GROUP_CONCAT -> PostgreSQL STRING_AGG with ::text cast
             $sql = preg_replace('/\bGROUP_CONCAT\s*\(\s*(DISTINCT\s+)?(.*?)\s+SEPARATOR\s+([\'"].*?[\'"])\s*\)/is', 'STRING_AGG($1($2)::text, $3)', $sql);

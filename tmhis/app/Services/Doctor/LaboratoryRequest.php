@@ -34,14 +34,14 @@ class LaboratoryRequest
 
         $stmt->execute([
             ':code'          => $code,
-            ':patient_id'    => $data['patient_id'],
-            ':doctor_id'     => $data['doctor_id'],
-            ':appointment_id'=> $data['appointment_id'] ?? null,
-            ':test_type'     => $data['test_type'],
-            ':priority'      => $data['priority'] ?? 'Routine',
-            ':notes'         => $data['clinical_notes'] ?? null,
-            ':status'        => $data['status'] ?? 'Pending',
-            ':requested_date'=> $data['requested_date'] ?? date('Y-m-d')
+            ':patient_id'    => $data['patient_id'] ?? $data['PatientID'],
+            ':doctor_id'     => $data['doctor_id'] ?? $data['DoctorID'],
+            ':appointment_id'=> $data['appointment_id'] ?? $data['AppointmentID'] ?? null,
+            ':test_type'     => $data['test_type'] ?? $data['TestType'],
+            ':priority'      => $data['priority'] ?? $data['Priority'] ?? 'Routine',
+            ':notes'         => $data['clinical_notes'] ?? $data['ClinicalNotes'] ?? null,
+            ':status'        => $data['status'] ?? $data['Status'] ?? 'Pending',
+            ':requested_date'=> $data['requested_date'] ?? $data['RequestedDate'] ?? date('Y-m-d')
         ]);
 
         return (int)$this->db->lastInsertId();

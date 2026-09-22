@@ -11,7 +11,7 @@ $pageTitle = 'Doctor Profile & Clinical Settings | Doctor Portal • Tupi Munici
 $activeMenu = 'settings';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 $doctorModel = new Doctor();
 $doctor = $doctorModel->findById($doctorId);

@@ -9,7 +9,7 @@ require_once __DIR__ . '/../models/MedicalCertificate.php';
 require_once __DIR__ . '/../models/Patient.php';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 $certId = (int)($_GET['id'] ?? 0);
 $certModel = new MedicalCertificate();

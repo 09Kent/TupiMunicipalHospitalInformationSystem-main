@@ -50,7 +50,9 @@ class Prescription
 
     public function create(array $data): int
     {
-        $conflict = $this->checkAllergyConflict((int)$data['patient_id'], (string)($data['medicine_name'] ?? ''));
+        $patientId = (int)($data['patient_id'] ?? $data['PatientID'] ?? 0);
+        $medicineName = (string)($data['medicine_name'] ?? $data['MedicineName'] ?? ($data['Medications'][0]['MedicineName'] ?? ''));
+        $conflict = $this->checkAllergyConflict($patientId, $medicineName);
         if ($conflict) {
             throw new Exception("Allergy Safety Violation: Patient is allergic to '{$conflict['Allergen']}' (Severity: {$conflict['Severity']}, Reaction: {$conflict['Reaction']}). Prescription creation blocked for patient safety.");
         }
@@ -71,18 +73,18 @@ class Prescription
 
         $stmt->execute([
             ':code'          => $code,
-            ':patient_id'    => $data['patient_id'],
-            ':doctor_id'     => $data['doctor_id'],
-            ':appointment_id'=> $data['appointment_id'] ?? null,
-            ':medicine'      => $data['medicine_name'],
-            ':dosage'        => $data['dosage'],
-            ':frequency'     => $data['frequency'],
-            ':duration'      => $data['duration'],
-            ':instructions'  => $data['instructions'] ?? 'Take as directed.',
-            ':quantity'      => $data['quantity'] ?? '1 Box',
-            ':refills'       => $data['refills'] ?? 0,
-            ':status'        => $data['status'] ?? 'Active',
-            ':issued_date'   => $data['issued_date'] ?? date('Y-m-d')
+            ':patient_id'    => $data['patient_id'] ?? $data['PatientID'],
+            ':doctor_id'     => $data['doctor_id'] ?? $data['DoctorID'],
+            ':appointment_id'=> $data['appointment_id'] ?? $data['AppointmentID'] ?? null,
+            ':medicine'      => $data['medicine_name'] ?? $data['MedicineName'] ?? ($data['Medications'][0]['MedicineName'] ?? 'Medication'),
+            ':dosage'        => $data['dosage'] ?? $data['Dosage'] ?? ($data['Medications'][0]['Dosage'] ?? 'Standard'),
+            ':frequency'     => $data['frequency'] ?? $data['Frequency'] ?? ($data['Medications'][0]['Frequency'] ?? 'Daily'),
+            ':duration'      => $data['duration'] ?? $data['Duration'] ?? ($data['Medications'][0]['Duration'] ?? '7 days'),
+            ':instructions'  => $data['instructions'] ?? $data['Instructions'] ?? 'Take as directed.',
+            ':quantity'      => $data['quantity'] ?? $data['Quantity'] ?? '1 Box',
+            ':refills'       => $data['refills'] ?? $data['Refills'] ?? 0,
+            ':status'        => $data['status'] ?? $data['Status'] ?? 'Active',
+            ':issued_date'   => $data['issued_date'] ?? $data['IssuedDate'] ?? date('Y-m-d')
         ]);
 
         return (int)$this->db->lastInsertId();

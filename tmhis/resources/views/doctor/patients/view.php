@@ -17,7 +17,7 @@ require_once __DIR__ . '/../models/AllergyRecord.php';
 require_once __DIR__ . '/../includes/anatomy_model.php';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 $patientId = (int)($_GET['id'] ?? 0);
 $patientModel = new Patient();

@@ -16,7 +16,7 @@ $pageTitle = 'Diagnosis & Treatment | Doctor Portal • Tupi Municipal Hospital'
 $activeMenu = 'diagnosis';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 
 $patientModel = new Patient();
 $consultationModel = new Consultation();

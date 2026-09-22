@@ -15,7 +15,7 @@ $pageTitle = 'Dashboard | Doctor Portal • Tupi Municipal Hospital';
 $activeMenu = 'dashboard';
 
 $currentUser = Session::getCurrentUser();
-$doctorId = $currentUser['doctor_id'] ?? 11;
+$doctorId = $currentUser['doctor_id'] ?? (int)session('doctor_id', 1);
 $specialty = $currentUser['specialty'] ?? 'Cardiologist';
 $specialtyCode = strtolower($currentUser['username'] ?? 'cardio');
 
