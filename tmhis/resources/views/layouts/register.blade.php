@@ -59,6 +59,9 @@
     }
   </style>
   @stack('styles')
+  @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+    @vite(['resources/js/app.js'])
+  @endif
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
 
