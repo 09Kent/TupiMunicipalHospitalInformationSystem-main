@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS `pharmacy_inventory` (
   `BatchNumber` VARCHAR(80) NOT NULL DEFAULT 'B-2026-001',
   `ExpiryDate` DATE NOT NULL,
   `Supplier` VARCHAR(150) NOT NULL DEFAULT 'DOH Central Depot / Mercury Drug Wholesale',
-  `Status` ENUM('In Stock', 'Low Stock', 'Out of Stock', 'Expired') NOT NULL DEFAULT 'In Stock',
+  `Status` VARCHAR(50) NOT NULL DEFAULT 'In Stock',
   `UpdatedAt` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

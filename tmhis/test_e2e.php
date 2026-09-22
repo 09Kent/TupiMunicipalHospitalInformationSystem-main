@@ -69,7 +69,7 @@ test("patients.Status exists", Schema::hasColumn('patients', 'Status'));
 // ============================================================
 echo "\n--- 2. USER ACCOUNTS & AUTHENTICATION ---\n";
 
-$roles = ['Admin', 'Doctor', 'Nurse', 'MedTech', 'Pharmacist', 'Accountant', 'Records', 'Registration', 'Director'];
+$roles = ['Admin', 'Doctor', 'Nurse', 'MedTech', 'Pharmacist', 'Billing', 'Records', 'Register', 'Chief'];
 foreach ($roles as $role) {
     $user = DB::table('users')->where('Role', $role)->first();
     test("User with role '$role' exists", $user !== null, $user ? "Username: {$user->Username}" : "No user found");
@@ -82,12 +82,12 @@ foreach ($roles as $role) {
 
 // Test login route exists and works
 $loginRoute = app('router')->getRoutes()->match(
-    app('request')->create('/login', 'GET')
+    \Illuminate\Http\Request::create('/login', 'GET')
 );
 test("GET /login route exists", $loginRoute !== null);
 
 $logoutRoute = app('router')->getRoutes()->match(
-    app('request')->create('/logout', 'GET')
+    \Illuminate\Http\Request::create('/logout', 'GET')
 );
 test("GET /logout route exists", $logoutRoute !== null);
 
@@ -111,7 +111,7 @@ $dashboardRoutes = [
 foreach ($dashboardRoutes as $uri => $label) {
     try {
         $route = app('router')->getRoutes()->match(
-            app('request')->create($uri, 'GET')
+            \Illuminate\Http\Request::create($uri, 'GET')
         );
         test("$label route ($uri) exists", $route !== null);
     } catch (\Exception $e) {
@@ -149,21 +149,21 @@ try {
     test("Create patient (INSERT)", $patientId > 0);
     
     // Read
-    $patient = DB::table('patients')->find($patientId);
+    $patient = DB::table('patients')->where('PatientID', $patientId)->first();
     test("Read patient (SELECT)", $patient !== null && $patient->FirstName === 'Test');
     
     // Update
     $updated = DB::table('patients')->where('PatientID', $patientId)->update(['LastName' => 'UpdatedPatient']);
     test("Update patient (UPDATE)", $updated === 1);
     
-    $verify = DB::table('patients')->find($patientId);
+    $verify = DB::table('patients')->where('PatientID', $patientId)->first();
     test("Verify update", $verify->LastName === 'UpdatedPatient');
     
     // Delete
     $deleted = DB::table('patients')->where('PatientID', $patientId)->delete();
     test("Delete patient (DELETE)", $deleted === 1);
     
-    $gone = DB::table('patients')->find($patientId);
+    $gone = DB::table('patients')->where('PatientID', $patientId)->first();
     test("Verify delete", $gone === null);
 } catch (\Exception $e) {
     test("Patient CRUD", false, $e->getMessage());
@@ -181,6 +181,7 @@ try {
         'FirstName' => 'Flow', 'MiddleName' => 'T', 'LastName' => 'TestPat',
         'DateOfBirth' => '1985-06-15', 'Age' => 40, 'Gender' => 'Female',
         'CivilStatus' => 'Married', 'ContactNumber' => '09181234567',
+        'Email' => 'flowtest' . time() . '@example.com',
         'Address' => 'Test Address', 'PatientCategory' => 'Outpatient',
         'Status' => 'Active', 'RegisteredBy' => 1, 'CreatedAt' => now(),
     ]);
@@ -190,9 +191,9 @@ try {
     $testPid = null;
 }
 
-// Get doctor user
-$doctor = DB::table('users')->where('Role', 'Doctor')->first();
-$doctorId = $doctor ? $doctor->UserID : null;
+// Get doctor record (for doctor_id foreign keys)
+$doctorRecord = DB::table('doctors')->first();
+$doctorId = $doctorRecord ? $doctorRecord->DoctorID : 1;
 
 // Get nurse user
 $nurse = DB::table('users')->where('Role', 'Nurse')->first();
@@ -213,13 +214,13 @@ if ($testPid && $doctorId) {
         test("Create appointment", $apptId > 0);
         
         // Read
-        $appt = DB::table('appointments')->find($apptId);
+        $appt = DB::table('appointments')->where('AppointmentID', $apptId)->first();
         test("Read appointment", $appt !== null);
         
         // Update status
-        DB::table('appointments')->where('AppointmentID', $apptId)->update(['Status' => 'In Progress']);
-        $appt2 = DB::table('appointments')->find($apptId);
-        test("Update appointment status", $appt2->Status === 'In Progress');
+        DB::table('appointments')->where('AppointmentID', $apptId)->update(['Status' => 'In Consultation']);
+        $appt2 = DB::table('appointments')->where('AppointmentID', $apptId)->first();
+        test("Update appointment status", $appt2->Status === 'In Consultation');
         
     } catch (\Exception $e) {
         test("Appointment CRUD", false, $e->getMessage());
@@ -232,15 +233,15 @@ if ($testPid && $doctorId) {
             $vitalsId = DB::table('patient_vitals')->insertGetId([
                 'PatientID' => $testPid,
                 'Temperature' => 36.5,
-                'BloodPressureSystolic' => 120,
-                'BloodPressureDiastolic' => 80,
+                'BloodPressure' => '120/80',
                 'HeartRate' => 72,
                 'RespiratoryRate' => 16,
                 'OxygenSaturation' => 98,
-                'Weight' => 65.0,
-                'Height' => 165.0,
+                'WeightKg' => 65.0,
+                'HeightCm' => 165.0,
                 'RecordedBy' => $nurseId ?? 1,
-                'RecordedAt' => now(),
+                'RecordedByName' => 'Nurse Elena Gomez, RN',
+                'CreatedAt' => now(),
             ]);
             test("Record vital signs", $vitalsId > 0);
         } catch (\Exception $e) {
@@ -274,13 +275,14 @@ if ($testPid && $doctorId) {
             if (in_array('Objective', $cols)) $noteData['Objective'] = 'T:37.5, BP:130/85';
             if (in_array('Assessment', $cols)) $noteData['Assessment'] = 'Probable viral infection';
             if (in_array('Plan', $cols)) $noteData['Plan'] = 'Paracetamol 500mg, rest, follow-up';
+            if (in_array('ClinicalNotes', $cols)) $noteData['ClinicalNotes'] = 'Standard clinical consultation notes';
             if (in_array('Notes', $cols)) $noteData['Notes'] = 'Test consultation note';
             if (in_array('AppointmentID', $cols) && isset($apptId)) $noteData['AppointmentID'] = $apptId;
             
             $noteId = DB::table('consultation_notes')->insertGetId($noteData);
             test("Create consultation note", $noteId > 0);
             
-            $note = DB::table('consultation_notes')->find($noteId);
+            $note = DB::table('consultation_notes')->where('NoteID', $noteId)->first();
             test("Read consultation note", $note !== null);
         } catch (\Exception $e) {
             test("Consultation notes CRUD", false, $e->getMessage());
@@ -315,12 +317,12 @@ if ($testPid && $doctorId) {
         ]);
         test("Create prescription", $rxId > 0);
         
-        $rx = DB::table('prescriptions')->find($rxId);
+        $rx = DB::table('prescriptions')->where('PrescriptionID', $rxId)->first();
         test("Read prescription", $rx !== null && $rx->MedicineName === 'Paracetamol');
         
         // Update
         DB::table('prescriptions')->where('PrescriptionID', $rxId)->update(['Status' => 'Completed']);
-        $rx2 = DB::table('prescriptions')->find($rxId);
+        $rx2 = DB::table('prescriptions')->where('PrescriptionID', $rxId)->first();
         test("Update prescription status", $rx2->Status === 'Completed');
         
     } catch (\Exception $e) {
@@ -346,7 +348,7 @@ if ($testPid && $doctorId) {
         if (in_array('TestType', $cols)) $labReqData['TestType'] = 'Hematology';
         if (in_array('Status', $cols)) $labReqData['Status'] = 'Pending';
         if (in_array('RequestDate', $cols)) $labReqData['RequestDate'] = now()->format('Y-m-d');
-        if (in_array('Priority', $cols)) $labReqData['Priority'] = 'Normal';
+        if (in_array('Priority', $cols)) $labReqData['Priority'] = 'Routine';
         if (in_array('RequestCode', $cols)) $labReqData['RequestCode'] = 'LAB-' . time();
         
         $labReqId = DB::table('laboratory_requests')->insertGetId($labReqData);
@@ -368,7 +370,7 @@ if ($testPid && $doctorId) {
         ]);
         test("Create lab result", $labResultId > 0);
         
-        $result = DB::table('laboratory_results')->find($labResultId);
+        $result = DB::table('laboratory_results')->where('ResultID', $labResultId)->first();
         test("Read lab result", $result !== null);
         
     } catch (\Exception $e) {
@@ -386,34 +388,40 @@ if (Schema::hasTable('pharmacy_inventory')) {
         $cols = Schema::getColumnListing('pharmacy_inventory');
         echo "  pharmacy_inventory columns: " . implode(', ', $cols) . "\n";
         
-        $invData = ['CreatedAt' => now()];
+        $invData = [];
+        if (in_array('ItemCode', $cols)) $invData['ItemCode'] = 'MED-TEST-' . time();
         if (in_array('MedicineName', $cols)) $invData['MedicineName'] = 'Test Medicine ' . time();
         if (in_array('GenericName', $cols)) $invData['GenericName'] = 'Testamol';
         if (in_array('BrandName', $cols)) $invData['BrandName'] = 'TestBrand';
         if (in_array('Category', $cols)) $invData['Category'] = 'General';
         if (in_array('DosageForm', $cols)) $invData['DosageForm'] = 'Tablet';
         if (in_array('Strength', $cols)) $invData['Strength'] = '500mg';
+        if (in_array('CurrentStock', $cols)) $invData['CurrentStock'] = 100;
         if (in_array('Quantity', $cols)) $invData['Quantity'] = 100;
         if (in_array('QuantityInStock', $cols)) $invData['QuantityInStock'] = 100;
         if (in_array('UnitPrice', $cols)) $invData['UnitPrice'] = 5.50;
+        if (in_array('SellingPrice', $cols)) $invData['SellingPrice'] = 8.50;
         if (in_array('ExpiryDate', $cols)) $invData['ExpiryDate'] = '2027-12-31';
         if (in_array('ReorderLevel', $cols)) $invData['ReorderLevel'] = 20;
-        if (in_array('Status', $cols)) $invData['Status'] = 'Available';
+        if (in_array('Status', $cols)) $invData['Status'] = 'In Stock';
         if (in_array('Supplier', $cols)) $invData['Supplier'] = 'Test Supplier';
+        if (in_array('UpdatedAt', $cols)) $invData['UpdatedAt'] = now();
         
         $invId = DB::table('pharmacy_inventory')->insertGetId($invData);
         test("Create pharmacy inventory item", $invId > 0);
         
-        $inv = DB::table('pharmacy_inventory')->find($invId);
+        $inv = DB::table('pharmacy_inventory')->where('InventoryID', $invId)->first();
         test("Read pharmacy inventory item", $inv !== null);
         
         // Update stock
-        if (in_array('QuantityInStock', $cols)) {
-            DB::table('pharmacy_inventory')->where('ItemID', $invId)->update(['QuantityInStock' => 90]);
-            $inv2 = DB::table('pharmacy_inventory')->find($invId);
+        if (in_array('CurrentStock', $cols)) {
+            DB::table('pharmacy_inventory')->where('InventoryID', $invId)->update(['CurrentStock' => 90]);
+            $inv2 = DB::table('pharmacy_inventory')->where('InventoryID', $invId)->first();
+            test("Update pharmacy stock", $inv2->CurrentStock == 90);
+        } elseif (in_array('QuantityInStock', $cols)) {
+            DB::table('pharmacy_inventory')->where('InventoryID', $invId)->update(['QuantityInStock' => 90]);
+            $inv2 = DB::table('pharmacy_inventory')->where('InventoryID', $invId)->first();
             test("Update pharmacy stock", $inv2->QuantityInStock == 90);
-        } elseif (in_array('Quantity', $cols)) {
-            DB::table('pharmacy_inventory')->where('ItemID', $invId)->update(['Quantity' => 90]);
         }
         
     } catch (\Exception $e) {
@@ -439,12 +447,13 @@ if ($testPid) {
             'AmountPaid' => 0,
             'BalanceDue' => 1500.00,
             'PaymentStatus' => 'Unpaid',
+            'DueDate' => now()->addDays(30)->format('Y-m-d'),
             'BilledBy' => 1,
             'CreatedAt' => now(),
         ]);
         test("Create billing invoice", $invoiceId > 0);
         
-        $inv = DB::table('billing_invoices')->find($invoiceId);
+        $inv = DB::table('billing_invoices')->where('InvoiceID', $invoiceId)->first();
         test("Read billing invoice", $inv !== null);
         
         // Update - partial payment
@@ -453,7 +462,7 @@ if ($testPid) {
             'BalanceDue' => 1000.00,
             'PaymentStatus' => 'Partially Paid',
         ]);
-        $inv2 = DB::table('billing_invoices')->find($invoiceId);
+        $inv2 = DB::table('billing_invoices')->where('InvoiceID', $invoiceId)->first();
         test("Update billing (partial payment)", $inv2->PaymentStatus === 'Partially Paid');
         
         // Full payment
@@ -462,7 +471,7 @@ if ($testPid) {
             'BalanceDue' => 0,
             'PaymentStatus' => 'Paid In Full',
         ]);
-        $inv3 = DB::table('billing_invoices')->find($invoiceId);
+        $inv3 = DB::table('billing_invoices')->where('InvoiceID', $invoiceId)->first();
         test("Update billing (full payment)", $inv3->PaymentStatus === 'Paid In Full');
         
     } catch (\Exception $e) {
@@ -492,7 +501,7 @@ if ($testPid && $doctorId) {
         ]);
         test("Create medical certificate", $certId > 0);
         
-        $cert = DB::table('medical_certificates')->find($certId);
+        $cert = DB::table('medical_certificates')->where('CertificateID', $certId)->first();
         test("Read medical certificate", $cert !== null);
         
     } catch (\Exception $e) {
@@ -513,11 +522,13 @@ if (Schema::hasTable('referrals') && $testPid && $doctorId) {
         $refData = ['PatientID' => $testPid, 'CreatedAt' => now()];
         if (in_array('DoctorID', $cols)) $refData['DoctorID'] = $doctorId;
         if (in_array('ReferringDoctorID', $cols)) $refData['ReferringDoctorID'] = $doctorId;
+        if (in_array('TargetSpecialtyID', $cols)) $refData['TargetSpecialtyID'] = 1;
         if (in_array('ReferralCode', $cols)) $refData['ReferralCode'] = 'REF-' . time();
         if (in_array('ReferredTo', $cols)) $refData['ReferredTo'] = 'Specialist Hospital';
         if (in_array('ReferredToDoctor', $cols)) $refData['ReferredToDoctor'] = 'Dr. Smith';
         if (in_array('Reason', $cols)) $refData['Reason'] = 'Further evaluation needed';
         if (in_array('Status', $cols)) $refData['Status'] = 'Pending';
+        if (in_array('Priority', $cols)) $refData['Priority'] = 'Routine';
         if (in_array('ReferralDate', $cols)) $refData['ReferralDate'] = now()->format('Y-m-d');
         
         $refId = DB::table('referrals')->insertGetId($refData);
@@ -538,12 +549,17 @@ if (Schema::hasTable('record_release_requests') && $testPid) {
         $cols = Schema::getColumnListing('record_release_requests');
         echo "  record_release_requests columns: " . implode(', ', $cols) . "\n";
         
-        $reqData = ['PatientID' => $testPid, 'CreatedAt' => now()];
+        $reqData = ['PatientID' => $testPid];
+        if (in_array('RequestNumber', $cols)) $reqData['RequestNumber'] = 'REQ-' . time();
+        if (in_array('RequestCode', $cols)) $reqData['RequestCode'] = 'REC-' . time();
+        if (in_array('RequestType', $cols)) $reqData['RequestType'] = 'Complete Medical History';
+        if (in_array('RequestorName', $cols)) $reqData['RequestorName'] = 'Test Patient Self';
         if (in_array('RequestedBy', $cols)) $reqData['RequestedBy'] = 1;
         if (in_array('Purpose', $cols)) $reqData['Purpose'] = 'Insurance claim';
-        if (in_array('Status', $cols)) $reqData['Status'] = 'Pending';
-        if (in_array('RequestDate', $cols)) $reqData['RequestDate'] = now()->format('Y-m-d');
-        if (in_array('RequestCode', $cols)) $reqData['RequestCode'] = 'REC-' . time();
+        if (in_array('PurposeOfRequest', $cols)) $reqData['PurposeOfRequest'] = 'Insurance claim';
+        if (in_array('Status', $cols)) $reqData['Status'] = 'Pending Review';
+        if (in_array('RequestedDate', $cols)) $reqData['RequestedDate'] = now();
+        if (in_array('CreatedAt', $cols)) $reqData['CreatedAt'] = now();
         
         $recId = DB::table('record_release_requests')->insertGetId($reqData);
         test("Create record release request", $recId > 0);
@@ -576,7 +592,7 @@ $testRoutes = [
 
 foreach ($testRoutes as [$method, $uri, $expectedCodes, $label]) {
     try {
-        $request = app('request')->create($uri, $method);
+        $request = \Illuminate\Http\Request::create($uri, $method);
         $response = $kernel->handle($request);
         $status = $response->getStatusCode();
         $expected = is_array($expectedCodes) ? $expectedCodes : [$expectedCodes];
@@ -603,7 +619,7 @@ echo "\n--- 15. VIEW FILES CHECK ---\n";
 
 $viewDirs = [
     'admin', 'doctor', 'nurse', 'medtech', 'pharmacy', 
-    'billing', 'records', 'registration', 'director',
+    'accountant', 'medical_officer', 'register', 'cmo',
 ];
 
 foreach ($viewDirs as $dir) {
@@ -628,11 +644,9 @@ $sidebarFiles = [
     'nurse/includes/sidebar.php',
     'medtech/includes/sidebar.php',
     'pharmacy/includes/sidebar.php',
-    'billing/includes/sidebar.php',
-    'admin/includes/sidebar.php',
-    'records/includes/sidebar.php',
-    'registration/includes/sidebar.php',
-    'director/includes/sidebar.php',
+    'medical_officer/includes/sidebar.php',
+    'cmo/includes/sidebar.php',
+    'register/includes/navbar.php',
 ];
 
 foreach ($sidebarFiles as $sf) {
@@ -659,6 +673,7 @@ try {
         'FirstName' => 'Workflow', 'LastName' => 'Patient',
         'DateOfBirth' => '1995-03-20', 'Age' => 30, 'Gender' => 'Male',
         'CivilStatus' => 'Single', 'ContactNumber' => '09191234567',
+        'Email' => 'wf-' . time() . '@example.com',
         'Address' => 'Workflow Test', 'PatientCategory' => 'Outpatient',
         'Status' => 'Active', 'RegisteredBy' => 1, 'CreatedAt' => now(),
     ]);
@@ -669,15 +684,15 @@ try {
         $wfVitals = DB::table('patient_vitals')->insertGetId([
             'PatientID' => $wfPid,
             'Temperature' => 38.2,
-            'BloodPressureSystolic' => 140,
-            'BloodPressureDiastolic' => 90,
+            'BloodPressure' => '140/90',
             'HeartRate' => 88,
             'RespiratoryRate' => 20,
             'OxygenSaturation' => 96,
-            'Weight' => 70,
-            'Height' => 170,
+            'WeightKg' => 70,
+            'HeightCm' => 170,
             'RecordedBy' => $nurseId ?? 1,
-            'RecordedAt' => now(),
+            'RecordedByName' => 'Nurse Elena Gomez, RN',
+            'CreatedAt' => now(),
         ]);
         test("WF Step 2: Nurse records vitals", $wfVitals > 0);
     }
@@ -749,13 +764,15 @@ try {
         $dispCols = Schema::getColumnListing('dispensing_records');
         echo "  dispensing_records columns: " . implode(', ', $dispCols) . "\n";
         
-        $dispData = ['PrescriptionID' => $wfRx, 'CreatedAt' => now()];
+        $dispData = ['PrescriptionID' => $wfRx];
         if (in_array('PatientID', $dispCols)) $dispData['PatientID'] = $wfPid;
+        if (in_array('DispenseCode', $dispCols)) $dispData['DispenseCode'] = 'WF-DISP-' . time();
         if (in_array('DispensedBy', $dispCols)) $dispData['DispensedBy'] = 1;
-        if (in_array('QuantityDispensed', $dispCols)) $dispData['QuantityDispensed'] = 21;
-        if (in_array('DispenseDate', $dispCols)) $dispData['DispenseDate'] = now()->format('Y-m-d');
+        if (in_array('QuantityDispensed', $dispCols)) $dispData['QuantityDispensed'] = '21';
+        if (in_array('DosageInstructions', $dispCols)) $dispData['DosageInstructions'] = 'Take 1 capsule every 8 hours for 7 days';
+        if (in_array('DispenseDate', $dispCols)) $dispData['DispenseDate'] = now();
         if (in_array('Status', $dispCols)) $dispData['Status'] = 'Dispensed';
-        if (in_array('DispensingCode', $dispCols)) $dispData['DispensingCode'] = 'WF-DISP-' . time();
+        if (in_array('CreatedAt', $dispCols)) $dispData['CreatedAt'] = now();
         
         $wfDisp = DB::table('dispensing_records')->insertGetId($dispData);
         test("WF Step 7: Pharmacist dispenses medication", $wfDisp > 0);
@@ -773,6 +790,7 @@ try {
         'AmountPaid' => 2500.00,
         'BalanceDue' => 0,
         'PaymentStatus' => 'Paid In Full',
+        'DueDate' => now()->addDays(30)->format('Y-m-d'),
         'BilledBy' => 1,
         'CreatedAt' => now(),
     ]);
@@ -836,7 +854,7 @@ try {
     
     // Delete test pharmacy inventory
     if (isset($invId)) {
-        DB::table('pharmacy_inventory')->where('ItemID', $invId)->delete();
+        DB::table('pharmacy_inventory')->where('InventoryID', $invId)->delete();
     }
     
     echo "  Cleanup completed.\n";

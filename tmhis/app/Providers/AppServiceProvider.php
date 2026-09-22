@@ -20,15 +20,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $isProductionOrServerless = app()->environment('production') 
-            || isset($_ENV['VERCEL']) 
-            || isset($_SERVER['VERCEL']) 
-            || str_contains(request()->getHost(), 'vercel.app') 
-            || str_contains(request()->getHost(), 'onrender.com') 
-            || request()->header('x-forwarded-proto') === 'https';
+        if (!app()->runningInConsole() && app()->bound('request')) {
+            $request = request();
+            $host = $request ? $request->getHost() : '';
+            $isProductionOrServerless = app()->environment('production') 
+                || isset($_ENV['VERCEL']) 
+                || isset($_SERVER['VERCEL']) 
+                || str_contains($host, 'vercel.app') 
+                || str_contains($host, 'onrender.com') 
+                || ($request && $request->header('x-forwarded-proto') === 'https');
 
-        if ($isProductionOrServerless && !app()->runningInConsole()) {
-            URL::forceScheme('https');
+            if ($isProductionOrServerless) {
+                URL::forceScheme('https');
+            }
         }
     }
 }

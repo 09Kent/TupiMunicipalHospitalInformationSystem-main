@@ -112,6 +112,9 @@
         <span class="user-name"><?= htmlspecialchars($currentOfficer['name'] ?? 'Mark Valenzuela') ?></span>
         <span class="user-role-badge">Medical Records Officer</span>
       </div>
+      <a href="/logout" class="logout-link" title="Logout" style="margin-left:auto;color:#ef4444;display:flex;align-items:center;padding:6px;">
+        <i data-lucide="log-out" style="width:16px;height:16px;"></i>
+      </a>
     </div>
   </div>
 
